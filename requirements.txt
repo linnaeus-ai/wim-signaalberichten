@@ -1,0 +1,18 @@
+# Core LangChain dependencies
+langchain-core
+langchain-openai
+langgraph
+
+# Data validation and modeling
+pydantic
+
+# Scientific computing and data processing
+numpy
+pandas
+
+# Dataset handling
+datasets
+
+# Environment and configuration
+python-dotenv
+pyyaml

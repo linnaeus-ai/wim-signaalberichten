@@ -1,0 +1,116 @@
+# Azure OpenAI Model Configuration
+# Cost per 1M tokens as of 2025
+# Context window and capabilities for each model
+
+models:
+  GPT4O:
+    name: "gpt-4o-2024-08-06"
+    display_name: "GPT-4o"
+    description: "Multimodal flagship model with vision, fastest GPT-4 level performance"
+    context_window: 128000
+    max_output_tokens: 16384
+    cost_per_million_input_tokens: 5.00
+    cost_per_million_output_tokens: 20.00
+    capabilities:
+      - text
+      - vision
+      - function_calling
+      - structured_output
+    recommended_for:
+      - entity_extraction  # n1
+      - json_ld_generation  # n3
+    api_version_min: "2024-02-15-preview"
+    
+  O4_MINI:
+    name: "o4-mini"
+    display_name: "o4-mini"
+    description: "Latest reasoning model with tool use, excels at math and coding"
+    context_window: 128000
+    max_output_tokens: 65536
+    cost_per_million_input_tokens: 1.00
+    cost_per_million_output_tokens: 4.00
+    capabilities:
+      - text
+      - reasoning
+      - structured_output
+      - function_calling
+      - tool_use
+      - self_fact_checking
+    recommended_for:
+      - schema_matching  # n2
+      - complex_reasoning
+    api_version_min: "2025-04-16"
+    notes: "92.7% on AIME 2025, 68.1% on SWE-bench, supports tool use"
+    
+  O3_MINI:
+    name: "o3-mini"
+    display_name: "o3-mini"
+    description: "Cost-effective reasoning model with adjustable effort parameter"
+    context_window: 128000
+    max_output_tokens: 65536
+    cost_per_million_input_tokens: 1.10
+    cost_per_million_output_tokens: 4.40
+    capabilities:
+      - text
+      - reasoning
+      - structured_output
+      - function_calling
+      - reasoning_effort_control
+    recommended_for:
+      - schema_matching  # n2
+      - json_ld_generation  # n3 (when cost is priority)
+    api_version_min: "2025-03-01-preview"
+    reasoning_effort_levels:
+      - low     # Fastest, least compute
+      - medium  # Balanced
+      - high    # Most thorough
+    notes: "Supports system messages via developer message mapping"
+
+  GPT4O_MINI:
+    name: "gpt-4o-mini"
+    display_name: "GPT-4o mini"
+    description: "Small, fast, and cost-effective model for lightweight tasks"
+    context_window: 128000
+    max_output_tokens: 16384
+    cost_per_million_input_tokens: 2.00  # 60% cheaper than GPT-4o
+    cost_per_million_output_tokens: 8.00  # 60% cheaper than GPT-4o
+    capabilities:
+      - text
+      - function_calling
+      - structured_output
+    recommended_for:
+      - simple_extraction
+      - validation_retry  # When we just need to fix specific errors
+    api_version_min: "2024-02-15-preview"
+    notes: "Good for high-volume simple tasks, 60% cheaper than GPT-4o"
+
+  GPT41:
+    name: "gpt-4.1"
+    display_name: "GPT-4.1"
+    description: "1M context window, excellent coding, 26% cheaper than GPT-4o"
+    context_window: 1000000
+    max_output_tokens: 16384
+    cost_per_million_input_tokens: 4.00
+    cost_per_million_output_tokens: 16.00
+    capabilities:
+      - text
+      - vision
+      - function_calling
+      - structured_output
+      - long_context
+    recommended_for:
+      - entity_extraction  # n1
+      - json_ld_generation  # n3
+      - long_documents
+      - coding_tasks
+    api_version_min: "2025-04-14"
+    notes: "21.4% better than GPT-4o on coding, 75% cache discount, June 2024 cutoff"
+
+# Cost optimization strategies
+cost_optimization:
+  default:
+    description: "Custom configuration with GPT-4.1 and o4-mini"
+    n1: "GPT41"
+    n2: "O4_MINI" 
+    n3: "GPT41"
+    n5: "GPT41"
