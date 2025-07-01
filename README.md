@@ -84,22 +84,6 @@ LangGraph state machine with five nodes:
 State flows through nodes carrying text, entities, schemas, and JSON-LD.
 Validation failures trigger retries up to configured limit.
 
-## Usage
-
-```python
-from src.graph.text_to_kg_pipeline import TextToKGPipeline
-
-# Initialize pipeline
-pipeline = TextToKGPipeline(db_path="llm_logs.db")
-
-# Process text
-result = await pipeline.run(
-    text="Een evenement in Amsterdam op 15 januari 2025",
-    add_labels=True,
-    max_retries=3
-)
-```
-
 ## Project Structure
 
 ```
@@ -139,6 +123,15 @@ If the validator fails to run:
 3. The validator requires the `schemaorg-all-http.ttl` file in the same directory
 
 ## Scripts
+
+### test_usage.py
+
+Verify all is working well by running one example:
+
+```bash
+python src/scripts/test_usage.py
+```
+
 
 ### run_metrics.py
 

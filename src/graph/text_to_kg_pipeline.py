@@ -3,7 +3,6 @@ import logging
 
 from typing import Optional, Union, Dict
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.graph import CompiledGraph
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from graph.text_to_kg_state import TextToKGState
@@ -101,11 +100,11 @@ class TextToKGPipeline:
 
         self.logger.info("Pipeline graph saved to %s", file_path)
 
-    def compile(self) -> CompiledGraph:
+    def compile(self):
         """
         Compile the text-to-KG pipeline into a state graph.
         Returns:
-            CompiledGraph: The compiled state graph representing the text-to-KG pipeline.
+            The compiled state graph representing the text-to-KG pipeline.
         """
         workflow = StateGraph(TextToKGState)
 
