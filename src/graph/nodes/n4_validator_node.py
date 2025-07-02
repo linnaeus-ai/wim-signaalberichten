@@ -74,10 +74,13 @@ class ValidatorNode(BaseNode):
             state.validation_output.append(result.stdout)
             state.validation_returncode = result.returncode
 
-            if state.validation_returncode == 1:
+            if state.validation_returncode == 0:
+                print(f"    → Validation passed!")
+            elif state.validation_returncode == 1:
+                # Recoverable validation errors - can retry
                 state.validation_runs += 1
                 print(
-                    f"    → Validation failed (attempt {state.validation_runs}/{state.validation_max_runs})"
+                    f"    → Validation failed with recoverable errors (attempt {state.validation_runs}/{state.validation_max_runs})"
                 )
                 if result.stdout:
                     print(f"      Error: {result.stdout.split('\n')[0][:80]}...")
@@ -85,8 +88,16 @@ class ValidatorNode(BaseNode):
                 if state.validation_runs >= state.validation_max_runs:
                     state.validation_max_runs_reached = True
                     print(f"    → Max validation attempts reached")
+            elif state.validation_returncode == 2:
+                # Infrastructure/system errors - cannot retry
+                state.validation_infrastructure_error = True
+                print(f"    → Validation failed with infrastructure error (non-recoverable)")
+                if result.stdout:
+                    print(f"      Infrastructure error: {result.stdout.split('\n')[0][:80]}...")
+                print(f"    → Skipping retries due to infrastructure failure")
             else:
-                print(f"    → Validation passed!")
+                # Unexpected return code
+                print(f"    → Validation failed with unexpected return code: {state.validation_returncode}")
 
             return state
 

@@ -50,6 +50,10 @@ class TextToKGState(BaseModel):
         False,
         description="Flag indicating whether the maximum number of runs for validation has been reached.",
     )
+    validation_infrastructure_error: bool = Field(
+        False,
+        description="Flag indicating whether validation failed due to infrastructure/system errors (non-recoverable).",
+    )
     
     # Database path and metadata for logging
     db_path: Optional[str] = Field(
