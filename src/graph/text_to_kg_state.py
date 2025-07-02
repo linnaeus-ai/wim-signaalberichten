@@ -54,6 +54,10 @@ class TextToKGState(BaseModel):
         False,
         description="Flag indicating whether validation failed due to infrastructure/system errors (non-recoverable).",
     )
+    entity_extraction_failed: bool = Field(
+        False,
+        description="Flag indicating whether entity extraction failed (e.g., LLM response parsing error).",
+    )
     
     # Database path and metadata for logging
     db_path: Optional[str] = Field(

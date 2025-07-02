@@ -135,6 +135,12 @@ class RetrieveSchemaOrgNode(BaseNode):
 
             print("    → Running Node 2: RetrieveSchemaOrgNode...")
 
+            # Check if entity extraction failed
+            if state.entity_extraction_failed:
+                print("    → Entity extraction failed - skipping schema retrieval")
+                state.schema_definitions = {}
+                return state
+
             # Define a dictionary to hold the YAML definitions
             yaml_definitions = {}
 

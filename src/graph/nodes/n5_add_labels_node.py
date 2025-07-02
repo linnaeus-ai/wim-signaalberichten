@@ -104,6 +104,15 @@ class AddLabelsNode(BaseNode):
             """
             print("    → Node 5: AddLabelsNode ... Adding labels to the json-ld")
 
+            # Check if entity extraction failed
+            if state.entity_extraction_failed:
+                print("    → Entity extraction failed - adding 'No subtopic found' label")
+                # Add the hardcoded label to the minimal JSON-LD
+                state.json_ld_contents[-1] = _make_labels_jsonld_str(
+                    state, self._topics_dict, ["No subtopic found"]
+                )
+                return state
+
             # First wrap the base LLM if logging is available
             llm_to_use = self._llm
             if state.db_path and state.wiki_id and state.worker_id:

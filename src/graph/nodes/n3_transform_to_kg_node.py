@@ -2,6 +2,7 @@ import os
 import re
 import yaml
 import uuid
+import json
 
 from graph.text_to_kg_state import TextToKGState
 from graph.base import BaseNode
@@ -40,6 +41,16 @@ class TransformToKGNode(BaseNode):
             print(
                 f"    → Node 3: TransformToKGNode (validation runs: {state.validation_runs})"
             )
+
+            # Check if entity extraction failed
+            if state.entity_extraction_failed:
+                print("    → Entity extraction failed - creating minimal JSON-LD")
+                minimal_jsonld = json.dumps({
+                    "@context": "https://schema.org",
+                    "@type": "Thing"
+                }, indent=2)
+                state.json_ld_contents = [minimal_jsonld]
+                return state
 
             # Build mapping of schema classes to entities
             entities = state.entity_extraction_output["entities"]

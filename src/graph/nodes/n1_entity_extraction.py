@@ -88,6 +88,7 @@ class EntityExtraction(BaseNode):
                     worker_id=state.worker_id
                 )
             # NOTE: We don't use a structured output because it drastically decreases the specificity of the results
+            # Let any exceptions from invoke propagate (infrastructure failures)
             response = llm_to_use.invoke(
                 [
                     SystemMessage(content=ENTITY_EXTRACTION_SYSTEM_PROMPT),
@@ -98,12 +99,27 @@ class EntityExtraction(BaseNode):
                     ),
                 ]
             )
-            if response.content:
+            
+            if not response.content:
+                # Infrastructure failure - no response from LLM
+                raise Exception("No response from LLM - possible Azure configuration issue")
+            
+            # Only catch parsing errors
+            try:
                 state.entity_extraction_output = self._structure_output(
                     response.content
                 )
-            else:
-                raise Exception("No entities extracted from the input text.")
+            except ValueError as e:
+                # This is a parsing failure - handle gracefully
+                print(f"    → Entity extraction failed: {e}")
+                print(f"    → Setting entity_extraction_failed flag and continuing with empty extraction")
+                state.entity_extraction_failed = True
+                state.entity_extraction_output = {
+                    "summary": "",
+                    "entities": [],
+                    "relations": []
+                }
+            
             return state
 
         return _node

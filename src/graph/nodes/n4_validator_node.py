@@ -32,6 +32,13 @@ class ValidatorNode(BaseNode):
                 f"    → Node 4: ValidatorNode (max runs reached: {state.validation_max_runs_reached})"
             )
 
+            # Check if entity extraction failed
+            if state.entity_extraction_failed:
+                print("    → Entity extraction failed - skipping validation")
+                state.validation_returncode = 0  # Success
+                state.validation_output.append("Skipped validation due to entity extraction failure")
+                return state
+
             # Get the JSON-LD content from state
             json_ld_content = (
                 state.json_ld_contents[-1] if state.json_ld_contents else None
