@@ -77,12 +77,12 @@ chmod +x src/graph/validator/schema-validator
 LangGraph state machine with five nodes:
 1. **Entity Extraction**: Parses text for entities and relationships
 2. **Schema Mapping**: Semantic search for best Schema.org types
-3. **KG Generation**: Builds JSON-LD representation
-4. **Validation**: Go-based Schema.org validator with retry routing
-5. **Topic Labeling**: Optional taxonomy classification
+3. **JSON-LD Generation**: Builds Schema.org knowledge graph representation
+4. **Validation**: Go-based validator with 3-tier exit codes (0: success, 1: recoverable errors, 2: infrastructure failures)
+5. **Topic Labeling**: Dutch taxonomy classification (Onderwerp/Beleving signals)
 
 State flows through nodes carrying text, entities, schemas, and JSON-LD.
-Validation failures trigger retries up to configured limit.
+Recoverable validation errors trigger retries; infrastructure failures halt pipeline.
 
 ## Project Structure
 
@@ -135,31 +135,49 @@ python src/scripts/test_usage.py
 
 ### run_metrics.py
 
-**Purpose:** Evaluates the pipeline's performance on labeled test data by comparing generated labels against golden labels. Calculates precision, recall, and F1 scores for Dutch customer service signal classification.
+**Purpose:** Evaluates the pipeline's performance on labeled test data by comparing generated labels against gold labels. Calculates precision, recall, and F1 scores for Dutch customer service signal classification.
 
 **Usage:**
 ```bash
-# From project root with PYTHONPATH set
+# Default: Process 10 rows from HuggingFace dataset
 python src/scripts/run_metrics.py
+
+# Process 100 rows from HuggingFace dataset
+python src/scripts/run_metrics.py --limit 100
+
+# Process Excel file with custom column names
+python src/scripts/run_metrics.py --excel-file src/data/Sample_10_teksten.xlsx \
+  --text-column "Toelichting_masked" \
+  --labels-column "Categorieën samengevoegd"
+
+# Specify custom output locations
+python src/scripts/run_metrics.py --output-excel custom_metrics.xlsx --db-path custom.db
 ```
 
+**Command-line options:**
+- `--excel-file`: Path to Excel file (alternative to HuggingFace dataset)
+- `--text-column`: Column name containing text to process (required with --excel-file)
+- `--labels-column`: Column name containing gold labels (required with --excel-file)
+- `--hf-dataset`: HuggingFace dataset name (default: UWV/wim_synthetic_data_for_testing)
+- `--limit`: Number of rows to process from HF dataset (default: 10)
+- `--output-excel`: Path for metrics Excel file (default: src/data/metrics.xlsx)
+- `--db-path`: Path for SQLite database (default: src/data/metrics.db)
+
 **What it does:**
-1. Loads synthetic test data from HuggingFace dataset `UWV/wim_synthetic_data_for_testing`
-2. Processes each text through the full pipeline (with label generation enabled)
-3. Compares generated labels against validated labels from the dataset
-4. Calculates metrics (TP, FP, FN, TN) for two signal types:
+1. Loads test data from either HuggingFace dataset or Excel file
+2. Standardizes column names to 'text' and 'gold_labels' internally
+3. Processes each text through the full pipeline (with label generation enabled)
+4. Compares generated labels against gold labels
+5. Calculates metrics (TP, FP, FN, TN) for two signal types:
    - **Onderwerp signals**: Topic-based categories (e.g., "Bouwen en verbouwen", "Burgerzaken")
    - **Beleving signals**: Experience-based categories (e.g., "Informatievoorziening", "Afhandeling")
-5. Saves results to:
-   - SQLite database: `src/data/metrics.db`
-   - Excel report: `src/data/metrics.xlsx`
+6. Saves results to SQLite database and Excel report with precision, recall, and F1 scores
 
 **Required files:**
 - `src/data/Hoofdklantsignalen - Subklantsignalen.xlsx` (label taxonomy)
 - Configured `.env` with Azure OpenAI credentials
-- HuggingFace access to the test dataset
 
-**Note:** The script tracks progress in the database and can resume from the last processed item if interrupted.
+**Note:** When using HuggingFace dataset, the script tracks progress and resumes from the last processed item if interrupted. Excel files are processed in full.
 
 ## Development
 
