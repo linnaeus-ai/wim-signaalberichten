@@ -1,4 +1,5 @@
 import json
+import pandas as pd
 
 from itertools import chain
 
@@ -17,7 +18,7 @@ from langchain_core.language_models.base import BaseLanguageModel
 
 class AddLabelsNode(BaseNode):
     name: str = "AddLabelsNode"
-    _topics_path: str = "src/data/TOPICS.md"
+    _topics_path: str = "src/data/Hoofdklantsignalen - Subklantsignalen.xlsx"
 
     def __init__(self, llm: BaseLanguageModel):
         """Adds labels to the JSON-LD knowledge graph."""
@@ -26,27 +27,21 @@ class AddLabelsNode(BaseNode):
         super().__init__(llm)
 
     def _get_topics_dict(self):
-        """Returns a dictionary of topics."""
-        topics_dict = {}
-
+        """Returns a dictionary of topics from Excel file."""
         try:
-            with open(self._topics_path, "r", encoding="utf-8") as file:
-                for line in file:
-                    line = line.strip()
-                    if line and "|" in line:
-                        key, values_str = line.split("|", 1)
-                        key = key.strip()
-                        values = [
-                            value.strip()
-                            for value in values_str.split(";")
-                            if value.strip()
-                        ]
-                        topics_dict[key] = values
+            # Read Excel file
+            df = pd.read_excel(self._topics_path)
+            
+            # Group subtopics by main topic
+            topics_dict = df.groupby('Hoofd_klantsignaal')['Sub_klantsignaal'].apply(list).to_dict()
+            
+            return topics_dict
         except FileNotFoundError:
             print(f"Topics file not found at {self._topics_path}")
             return {}
-
-        return topics_dict
+        except Exception as e:
+            print(f"Error reading topics file: {e}")
+            return {}
 
     def get_node(self):
         """..."""

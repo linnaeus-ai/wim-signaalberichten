@@ -9,6 +9,7 @@ pydantic
 # Scientific computing and data processing
 numpy
 pandas
+openpyxl  # For reading Excel files
 
 # Dataset handling
 datasets
