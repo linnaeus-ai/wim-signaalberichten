@@ -20,7 +20,7 @@ class Colors:
 
 async def test_usage():
     # Input text
-    input_text = "Een evenement in Amsterdam op 15 januari 2025"
+    input_text = "Mark Rutte (Den Haag, 14 februari 1967) was van 14 oktober 2010 tot 2 juli 2024 minister-president van Nederland"
     
     print(f"{Colors.HEADER}{Colors.BOLD}=== Text-to-Knowledge-Graph Pipeline Test ==={Colors.ENDC}\n")
     print(f"{Colors.CYAN}Input text:{Colors.ENDC} \"{input_text}\"\n")
@@ -69,12 +69,20 @@ async def test_usage():
         print()
     
     # Print schema mappings
-    if "schema_definitions" in result:
+    if "schema_definitions" in result and result["schema_definitions"]:
         print(f"{Colors.HEADER}{Colors.BOLD}Schema Mappings:{Colors.ENDC}")
-        for schema in result["schema_definitions"]:
-            print(f"  • {Colors.CYAN}{schema['entity_class']}{Colors.ENDC} → {Colors.GREEN}{schema['schemaorg_class']}{Colors.ENDC}")
-            if "reasoning" in schema:
-                print(f"    {Colors.YELLOW}Reasoning:{Colors.ENDC} {schema['reasoning'][:80]}...")
+        schema_defs = result["schema_definitions"]
+        
+        # schema_definitions is a Dict[str, str] where key is class name and value is YAML definition
+        if isinstance(schema_defs, dict):
+            for class_name, yaml_def in schema_defs.items():
+                # Extract Schema.org type from YAML definition
+                # The YAML starts with the schema type followed by a colon
+                if yaml_def and isinstance(yaml_def, str):
+                    lines = yaml_def.strip().split('\n')
+                    if lines:
+                        schema_type = lines[0].rstrip(':')
+                        print(f"  • {Colors.CYAN}{class_name}{Colors.ENDC} → {Colors.GREEN}{schema_type}{Colors.ENDC}")
         print()
     
     # Print validation results
