@@ -161,3 +161,7 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 .nfs*
+
+# Project specific
+src/data/*.xlsx
+src/data/TOPICS.md
