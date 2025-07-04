@@ -29,12 +29,12 @@ class ValidatorNode(BaseNode):
             """
 
             print(
-                f"    → Node 4: ValidatorNode (max runs reached: {state.validation_max_runs_reached})"
+                f"\033[93m    → Node 4: ValidatorNode (max runs reached: {state.validation_max_runs_reached})\033[0m"
             )
 
             # Check if entity extraction failed
             if state.entity_extraction_failed:
-                print("    → Entity extraction failed - skipping validation")
+                print("\033[93m    → Entity extraction failed - skipping validation\033[0m")
                 state.validation_returncode = 0  # Success
                 state.validation_output.append("Skipped validation due to entity extraction failure")
                 return state
@@ -62,7 +62,7 @@ class ValidatorNode(BaseNode):
                 tmp_file.write(json_ld_content)
                 tmp_path = tmp_file.name
 
-            print(f"    → Running schema validation...")
+            print(f"\033[96m    → Running schema validation...\033[0m")
 
             try:
                 # Perform Check: call the Go validator CLI
@@ -82,29 +82,29 @@ class ValidatorNode(BaseNode):
             state.validation_returncode = result.returncode
 
             if state.validation_returncode == 0:
-                print(f"    → Validation passed!")
+                print(f"\033[92m    → Validation passed!\033[0m")
             elif state.validation_returncode == 1:
                 # Recoverable validation errors - can retry
                 state.validation_runs += 1
                 print(
-                    f"    → Validation failed with recoverable errors (attempt {state.validation_runs}/{state.validation_max_runs})"
+                    f"\033[91m    → Validation failed with recoverable errors (attempt {state.validation_runs}/{state.validation_max_runs})\033[0m"
                 )
                 if result.stdout:
-                    print(f"      Error: {result.stdout.split('\n')[0][:80]}...")
+                    print(f"\033[91m      Error: {result.stdout.split('\n')[0][:80]}...\033[0m")
 
                 if state.validation_runs >= state.validation_max_runs:
                     state.validation_max_runs_reached = True
-                    print(f"    → Max validation attempts reached")
+                    print(f"\033[93m    → Max validation attempts reached\033[0m")
             elif state.validation_returncode == 2:
                 # Infrastructure/system errors - cannot retry
                 state.validation_infrastructure_error = True
-                print(f"    → Validation failed with infrastructure error (non-recoverable)")
+                print(f"\033[91m    → Validation failed with infrastructure error (non-recoverable)\033[0m")
                 if result.stdout:
-                    print(f"      Infrastructure error: {result.stdout.split('\n')[0][:80]}...")
-                print(f"    → Skipping retries due to infrastructure failure")
+                    print(f"\033[91m      Infrastructure error: {result.stdout.split('\n')[0][:80]}...\033[0m")
+                print(f"\033[93m    → Skipping retries due to infrastructure failure\033[0m")
             else:
                 # Unexpected return code
-                print(f"    → Validation failed with unexpected return code: {state.validation_returncode}")
+                print(f"\033[91m    → Validation failed with unexpected return code: {state.validation_returncode}\033[0m")
 
             return state
 

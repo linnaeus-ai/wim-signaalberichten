@@ -37,10 +37,10 @@ class AddLabelsNode(BaseNode):
             
             return topics_dict
         except FileNotFoundError:
-            print(f"Topics file not found at {self._topics_path}")
+            print(f"\033[91mTopics file not found at {self._topics_path}\033[0m")
             return {}
         except Exception as e:
-            print(f"Error reading topics file: {e}")
+            print(f"\033[91mError reading topics file: {e}\033[0m")
             return {}
 
     def get_node(self):
@@ -73,7 +73,12 @@ class AddLabelsNode(BaseNode):
             # Add the labels to the "about" key
             for label in labels:
                 topic_set_name = find_topic_set_name(label, topics_dict)
-                print(f"    Found topic set name: {topic_set_name} for label: {label}")
+                
+                # Special handling for "No subtopic found"
+                if label == "No subtopic found" and topic_set_name is None:
+                    topic_set_name = "No topic found"
+                
+                print(f"\033[92m    Found topic set name: \033[96m{topic_set_name}\033[0m \033[92mfor label: \033[96m{label}\033[0m")
                 if topic_set_name:
 
                     # Check if "about" value is list
@@ -102,7 +107,7 @@ class AddLabelsNode(BaseNode):
             Returns:
                 TextToKGState: The updated state.
             """
-            print("    → Node 5: AddLabelsNode ... Adding labels to the json-ld")
+            print("\033[93m    → Node 5: AddLabelsNode ... Adding labels to the json-ld\033[0m")
 
             # Check if entity extraction failed
             if state.entity_extraction_failed:
@@ -127,10 +132,57 @@ class AddLabelsNode(BaseNode):
             # Then bind structured model to the (possibly wrapped) llm
             llm = llm_to_use.with_structured_output(AddLabelsStructuredOutput)
 
-            # Formate the human prompt
-            topics_list = list(chain.from_iterable(self._topics_dict.values()))
+            # Define onderwerp and beleving categories
+            ONDERWERP_SIGNALS = [
+                "Bouwen en verbouwen",
+                "Burgerzaken",
+                "Dagelijks leven en sociale gelegenheden",
+                "Financiële ondersteuning",
+                "Maatschappelijke ondersteuning",
+                "No topic found",
+                "Opruimen, afval en onderhoud",
+                "Parkeren",
+                "Veiligheid en omgeving",
+                "Vervoer",
+                "Werk",
+                "Wonenen en ondernemen",
+                "Zorg",
+            ]
+            
+            BELEVING_SIGNALS = [
+                "Informatievoorziening",
+                "Houding & Gedrag medewerker",
+                "Fysieke dienstverlening",
+                "Digitale mogelijkheden",
+                "Contact leggen met medewerker",
+                "Algemene ervaring",
+                "Afhandeling",
+                "Processen",
+                "Prijs & Kwaliteit",
+                "No topic found",
+                "Kennis & Vaardigheden medewerker",
+            ]
+
+            # Separate topics by category
+            onderwerp_labels = []
+            beleving_labels = []
+            
+            for hoofd_signal, sub_signals in self._topics_dict.items():
+                if hoofd_signal in ONDERWERP_SIGNALS:
+                    onderwerp_labels.extend(sub_signals)
+                elif hoofd_signal in BELEVING_SIGNALS:
+                    beleving_labels.extend(sub_signals)
+            
+            # Add "No subtopic found" if not already present
+            if "No subtopic found" not in onderwerp_labels:
+                onderwerp_labels.append("No subtopic found")
+            if "No subtopic found" not in beleving_labels:
+                beleving_labels.append("No subtopic found")
+
+            # Format the human prompt
             human_prompt = ADD_LABELS_HUMAN_PROMPT.format(
-                TOPICS_LIST="\n".join(topics_list),
+                ONDERWERP_LIST="\n".join(onderwerp_labels),
+                BELEVING_LIST="\n".join(beleving_labels),
                 INPUT_TEXT=state.text,
             )
 
@@ -142,17 +194,47 @@ class AddLabelsNode(BaseNode):
                 ]
             )
 
-            labels = response.labels
+            # Extract labels from both categories
+            onderwerp_response = response.onderwerp_labels
+            beleving_response = response.beleving_labels
 
-            # Check if labels are actually from the topics list
-            labels = [
+            # Create combined topics list for validation
+            all_valid_onderwerp = onderwerp_labels
+            all_valid_beleving = beleving_labels
+            
+            # Validate onderwerp labels
+            validated_onderwerp = [
                 label
-                for label in labels
-                if label in topics_list
+                for label in onderwerp_response
+                if label in all_valid_onderwerp
                 or print(
-                    f"    Found label '{label}' not in topics list. Skipping this label."
+                    f"    Found onderwerp label '{label}' not in topics list. Skipping this label."
                 )
             ]
+            
+            # Validate beleving labels
+            validated_beleving = [
+                label
+                for label in beleving_response
+                if label in all_valid_beleving
+                or print(
+                    f"    Found beleving label '{label}' not in topics list. Skipping this label."
+                )
+            ]
+            
+            # Print selected labels for clarity
+            if validated_onderwerp:
+                print(f"    → Selected onderwerp labels: {', '.join(validated_onderwerp)}")
+            else:
+                print(f"    → No onderwerp labels selected")
+                
+            if validated_beleving:
+                print(f"    → Selected beleving labels: {', '.join(validated_beleving)}")
+            else:
+                print(f"    → No beleving labels selected")
+            
+            # Combine validated labels for JSON-LD generation
+            labels = validated_onderwerp + validated_beleving
 
             # Add labels and their sets to the last json-ld in the state
             state.json_ld_contents[-1] = _make_labels_jsonld_str(

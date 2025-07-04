@@ -133,11 +133,11 @@ class RetrieveSchemaOrgNode(BaseNode):
                 TextToKGState: The updated state.
             """
 
-            print("    → Running Node 2: RetrieveSchemaOrgNode...")
+            print("\033[93m    → Running Node 2: RetrieveSchemaOrgNode...\033[0m")
 
             # Check if entity extraction failed
             if state.entity_extraction_failed:
-                print("    → Entity extraction failed - skipping schema retrieval")
+                print("\033[93m    → Entity extraction failed - skipping schema retrieval\033[0m")
                 state.schema_definitions = {}
                 return state
 
@@ -155,7 +155,7 @@ class RetrieveSchemaOrgNode(BaseNode):
                     class_to_entities[class_name] = entity_triple
 
             print(
-                f"    → Found {len(class_to_entities)} unique entity classes to process"
+                f"\033[92m    → Found {len(class_to_entities)} unique entity classes to process\033[0m"
             )
 
             def process_class(entity_triple: tuple) -> tuple[str, str]:
@@ -166,7 +166,7 @@ class RetrieveSchemaOrgNode(BaseNode):
 
                 for attempt in range(max_retries):
                     try:
-                        print(f"      • Looking up schema for '{cl}': {description}")
+                        print(f"\033[96m      • Looking up schema for '{cl}': {description}\033[0m")
                         # Fake tool call to retrieve top 5 schema.org definitions
                         top_5 = self.semantic_lookup_from_sql(cl, description)
                         candidate_labels = [schema["label"] for schema in top_5]
@@ -224,7 +224,7 @@ class RetrieveSchemaOrgNode(BaseNode):
                         # Validate that the selected_class matches the candidate at selected_number
                         expected_class = top_5[selected_index]["label"]
                         if response.selected_class != expected_class:
-                            print(f"        ⚠️  Warning: selected_class '{response.selected_class}' doesn't match expected '{expected_class}' at index {response.selected_number}")
+                            print(f"\033[93m        ⚠️  Warning: selected_class '{response.selected_class}' doesn't match expected '{expected_class}' at index {response.selected_number}\033[0m")
                             # Use the class from the structured output as primary source
                         selected_class = response.selected_class
 
@@ -237,7 +237,7 @@ class RetrieveSchemaOrgNode(BaseNode):
                             )
 
                         print(
-                            f"        ✓ Selected schema for '{cl}' → {selected_class}"
+                            f"\033[92m        ✓ Selected schema for '{cl}' → {selected_class}\033[0m"
                         )
                         print(f"          Reasoning: {response.reasoning}")
                         return cl, yaml_definition
@@ -248,7 +248,7 @@ class RetrieveSchemaOrgNode(BaseNode):
                         # Check if it's an OpenAIRefusalError
                         if "OpenAIRefusalError" in str(type(e)):
                             if attempt < max_retries - 1:
-                                print(f"        ⚠️  Model refused structured output for '{cl}', retrying (attempt {attempt + 1}/{max_retries})...")
+                                print(f"\033[93m        ⚠️  Model refused structured output for '{cl}', retrying (attempt {attempt + 1}/{max_retries})...\033[0m")
                                 time.sleep(1.0)  # Wait 1 second before retry
                                 continue
                             # If max retries reached, fall through to fallback logic below
@@ -259,18 +259,18 @@ class RetrieveSchemaOrgNode(BaseNode):
                                 # Calculate exponential backoff delay
                                 delay = base_delay * (2**attempt)
                                 print(
-                                    f"        ⚠️  Rate limit hit for '{cl}', retrying in {delay}s (attempt {attempt + 1}/{max_retries})..."
+                                    f"\033[93m        ⚠️  Rate limit hit for '{cl}', retrying in {delay}s (attempt {attempt + 1}/{max_retries})...\033[0m"
                                 )
                                 time.sleep(delay)
                                 continue
                             else:
                                 print(
-                                    f"        ❌ Max retries reached for '{cl}' due to rate limiting"
+                                    f"\033[91m        ❌ Max retries reached for '{cl}' due to rate limiting\033[0m"
                                 )
 
                         # For any error after max retries, fallback to selecting the first class
-                        print(f"        ⚠️  Error after {max_retries} attempts for '{cl}': {e}")
-                        print(f"        → Falling back to first candidate schema")
+                        print(f"\033[93m        ⚠️  Error after {max_retries} attempts for '{cl}': {e}\033[0m")
+                        print(f"\033[93m        → Falling back to first candidate schema\033[0m")
                         
                         # Check if we have top_5 results to fall back to
                         if 'top_5' in locals() and top_5:
@@ -279,13 +279,13 @@ class RetrieveSchemaOrgNode(BaseNode):
                             yaml_definition = self._get_yaml_for_class(selected_class)
                             
                             if yaml_definition:
-                                print(f"        ✓ Fallback selected schema for '{cl}' → {selected_class}")
+                                print(f"\033[92m        ✓ Fallback selected schema for '{cl}' → {selected_class}\033[0m")
                                 return cl, yaml_definition
                             else:
-                                print(f"        ❌ Could not retrieve fallback schema for '{selected_class}'")
+                                print(f"\033[91m        ❌ Could not retrieve fallback schema for '{selected_class}'\033[0m")
                                 return cl, None
                         else:
-                            print(f"        ❌ No candidates available for fallback")
+                            print(f"\033[91m        ❌ No candidates available for fallback\033[0m")
                             return cl, None
 
                 # Should not reach here, but just in case
@@ -309,7 +309,7 @@ class RetrieveSchemaOrgNode(BaseNode):
 
             # Add to the state
             state.schema_definitions = yaml_definitions
-            print(f"    → Retrieved {len(yaml_definitions)} schema definitions")
+            print(f"\033[92m    → Retrieved {len(yaml_definitions)} schema definitions\033[0m")
             return state
 
         return _node

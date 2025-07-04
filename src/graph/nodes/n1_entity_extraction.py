@@ -75,7 +75,7 @@ class EntityExtraction(BaseNode):
 
         def _node(state: TextToKGState) -> TextToKGState:
             """..."""
-            print("    → Running Node 1: EntityExtractionNode...")
+            print("\033[93m    → Running Node 1: EntityExtractionNode...\033[0m")
 
             # Wrap LLM with logging if db path available
             llm_to_use = self._llm

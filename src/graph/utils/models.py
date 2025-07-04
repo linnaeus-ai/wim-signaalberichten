@@ -20,9 +20,14 @@ class RetrieveSchemaOrgStructuredOutput(BaseModel):
 
 
 class AddLabelsStructuredOutput(BaseModel):
-    labels: List[str] = Field(
+    onderwerp_labels: List[str] = Field(
         ...,
-        description="List of labels to be added to the knowledge graph.",
+        description="Lijst van onderwerp labels (waar gaat het over) die van toepassing zijn op de tekst. Kies 'No subtopic found' als er geen passend label is.",
+        min_items=1,
+    )
+    beleving_labels: List[str] = Field(
+        ...,
+        description="Lijst van beleving labels (hoe wordt de service ervaren) die van toepassing zijn op de tekst. Kies 'No subtopic found' als er geen passend label is.",
         min_items=1,
     )
 

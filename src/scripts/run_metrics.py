@@ -1,6 +1,7 @@
 import argparse
 import ast
 import json
+import os
 import sqlite3
 import sys
 
@@ -11,14 +12,29 @@ from datasets import load_dataset, Dataset
 from graph.utils import azure_llm
 from graph import TextToKGPipeline, TextToKGState
 
-DATA = pd.read_excel("src/data/Hoofdklantsignalen - Subklantsignalen.xlsx")
+# ANSI color codes
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    ORANGE = '\033[38;5;208m'  # Orange color
+    BLINK = '\033[5m'  # Blinking text
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+TAXONOMY_FILE = "src/data/Hoofdklantsignalen - Subklantsignalen.xlsx"
+DATA = pd.read_excel(TAXONOMY_FILE)
 ONDERWERP_SIGNALS = [
     "Bouwen en verbouwen",
     "Burgerzaken",
     "Dagelijks leven en sociale gelegenheden",
     "Financiële ondersteuning",
     "Maatschappelijke ondersteuning",
-    "No subtopic found",
+    "No topic found",
     "Opruimen, afval en onderhoud",
     "Parkeren",
     "Veiligheid en omgeving",
@@ -37,7 +53,7 @@ BELEVING_SIGNALS = [
     "Afhandeling",
     "Processen",
     "Prijs & Kwaliteit",
-    "No subtopic found",
+    "No topic found",
     "Kennis & Vaardigheden medewerker",
 ]
 
@@ -58,7 +74,7 @@ def get_labels_from_json_ld(state: TextToKGState) -> tuple[list, list]:
             else:
                 # We don't raise an error, because we want to simply exclude labels that are incorrect, not stop the whole row
                 print(
-                    f"ValueError: Label '{item["inDefinedTermSet"]["name"]}' not found in predefined signals. Continuing with the next label."
+                    f"{Colors.BLINK}{Colors.ORANGE}Info: Skipping label '{item["name"]}' - category '{item["inDefinedTermSet"]["name"]}' not found in taxonomy file ({os.path.basename(TAXONOMY_FILE)}){Colors.ENDC}"
                 )
     else:
         raise ValueError("No 'about' key found in JSON-LD content.")
@@ -84,7 +100,7 @@ def get_labels_from_validated_list(validated_labels: list) -> tuple[list, list]:
             beleving.append(label)
         else:
             print(
-                f"ValueError: Label '{label}' not found in predefined signals. Continuing with the next label."
+                f"{Colors.BLINK}{Colors.ORANGE}Info: Skipping label '{label}' - not found in taxonomy file ({os.path.basename(TAXONOMY_FILE)}){Colors.ENDC}"
             )
     return beleving, onderwerp
 
@@ -149,6 +165,48 @@ def calculate_metrics_signals(
         )
 
 
+def validate_dataset_labels(dataset) -> dict[str, int]:
+    """
+    Validates that all gold labels in the dataset exist in the taxonomy.
+    Returns a dictionary of invalid labels and their occurrence counts.
+    """
+    # Build set of all valid taxonomy labels for O(1) lookup
+    all_valid_labels = set()
+    
+    # Get onderwerp sub-signals
+    onderwerp_signals = DATA[DATA["Hoofd_klantsignaal"].isin(ONDERWERP_SIGNALS)][
+        "Sub_klantsignaal"
+    ].tolist()
+    all_valid_labels.update(onderwerp_signals)
+    
+    # Get beleving sub-signals  
+    beleving_signals = DATA[DATA["Hoofd_klantsignaal"].isin(BELEVING_SIGNALS)][
+        "Sub_klantsignaal"
+    ].tolist()
+    all_valid_labels.update(beleving_signals)
+    
+    # Also add special labels
+    all_valid_labels.add("No subtopic found")
+    
+    # Collect all unique labels from dataset with counts
+    invalid_label_counts = {}
+    total_rows = len(dataset)
+    
+    for row in dataset:
+        try:
+            gold_labels = ast.literal_eval(row["gold_labels"])
+            if not isinstance(gold_labels, list):
+                gold_labels = []
+        except:
+            gold_labels = []
+            
+        for label in gold_labels:
+            if label not in all_valid_labels:
+                invalid_label_counts[label] = invalid_label_counts.get(label, 0) + 1
+                
+    return invalid_label_counts
+
+
 def setup_local_db(local_db_path: str) -> tuple[sqlite3.Connection, sqlite3.Cursor]:
     conn = sqlite3.connect(local_db_path)
     cursor = conn.cursor()
@@ -205,13 +263,13 @@ def load_data_source(args, cursor):
                 missing_columns.append(f"labels column '{args.labels_column}'")
                 
             if missing_columns:
-                print(f"Error: The following columns were not found: {', '.join(missing_columns)}")
-                print(f"\nAvailable columns in '{args.excel_file}':")
+                print(f"{Colors.RED}Error: The following columns were not found: {', '.join(missing_columns)}{Colors.ENDC}")
+                print(f"\n{Colors.YELLOW}Available columns in '{args.excel_file}':{Colors.ENDC}")
                 for col in df.columns:
-                    print(f"  - {col}")
-                print("\nPlease specify the correct column names using:")
-                print("  --text-column <column_name>   for the text to process")
-                print("  --labels-column <column_name> for the validated labels")
+                    print(f"  - {Colors.CYAN}{col}{Colors.ENDC}")
+                print(f"\n{Colors.YELLOW}Please specify the correct column names using:{Colors.ENDC}")
+                print(f"  {Colors.CYAN}--text-column <column_name>{Colors.ENDC}   for the text to process")
+                print(f"  {Colors.CYAN}--labels-column <column_name>{Colors.ENDC} for the validated labels")
                 sys.exit(1)
             
             # Rename columns to match expected format
@@ -228,17 +286,17 @@ def load_data_source(args, cursor):
             
             # Convert to HuggingFace Dataset
             dataset = Dataset.from_pandas(df[['text', 'gold_labels']])
-            print(f"Loaded {len(dataset)} rows from Excel file: {args.excel_file}")
+            print(f"{Colors.GREEN}Loaded {len(dataset)} rows from Excel file: {args.excel_file}{Colors.ENDC}")
             
         except FileNotFoundError:
-            print(f"Error: Excel file not found: {args.excel_file}")
+            print(f"{Colors.RED}Error: Excel file not found: {args.excel_file}{Colors.ENDC}")
             sys.exit(1)
         except Exception as e:
-            print(f"Error loading Excel file: {e}")
+            print(f"{Colors.RED}Error loading Excel file: {e}{Colors.ENDC}")
             sys.exit(1)
     else:
         # Load from HuggingFace dataset
-        print(f"Loading HuggingFace dataset: {args.hf_dataset}")
+        print(f"{Colors.CYAN}Loading HuggingFace dataset: {args.hf_dataset}{Colors.ENDC}")
         
         # Get last processed ID from database
         cursor.execute("SELECT MAX(id) FROM texts_and_labels")
@@ -254,11 +312,11 @@ def load_data_source(args, cursor):
         end_idx = min(last_id + args.limit, len(raw_dataset))
         
         if start_idx >= len(raw_dataset):
-            print(f"All rows already processed (last_id={last_id}, dataset size={len(raw_dataset)})")
+            print(f"{Colors.YELLOW}All rows already processed (last_id={last_id}, dataset size={len(raw_dataset)}){Colors.ENDC}")
             sys.exit(0)
             
         dataset = raw_dataset.select(range(start_idx, end_idx))
-        print(f"Processing rows {start_idx} to {end_idx-1} from HuggingFace dataset (limit={args.limit})")
+        print(f"{Colors.CYAN}Processing rows {start_idx} to {end_idx-1} from HuggingFace dataset (limit={args.limit}){Colors.ENDC}")
         
         # Rename columns to match expected format
         dataset = dataset.rename_columns({
@@ -331,9 +389,9 @@ def write_to_excel(cursor: sqlite3.Cursor, excel_path: str) -> None:
                 )
                 df.to_excel(writer, sheet_name=f"{signal_type}_scores")
 
-        print(f"Metrics written to {excel_path}")
+        print(f"{Colors.GREEN}Metrics written to {excel_path}{Colors.ENDC}")
     except Exception as e:
-        print(f"Error writing to Excel: {e}")
+        print(f"{Colors.RED}Error writing to Excel: {e}{Colors.ENDC}")
 
 
 def main(args) -> None:
@@ -345,13 +403,50 @@ def main(args) -> None:
     
     # Load data from appropriate source
     dataset = load_data_source(args, cursor)
+    
+    # Validate all gold labels exist in taxonomy
+    print(f"\n{Colors.CYAN}Validating dataset labels against taxonomy...{Colors.ENDC}")
+    invalid_labels = validate_dataset_labels(dataset)
+    
+    if invalid_labels:
+        # Calculate affected rows
+        total_affected = sum(invalid_labels.values())
+        total_rows = len(dataset)
+        percentage = (total_affected / total_rows) * 100
+        
+        print(f"\n{Colors.BLINK}{Colors.ORANGE}⚠️  WARNING: Found labels not in taxonomy file ({os.path.basename(TAXONOMY_FILE)}){Colors.ENDC}")
+        print(f"\n{Colors.YELLOW}Invalid labels found:{Colors.ENDC}")
+        print(f"{Colors.YELLOW}{'─' * 50}{Colors.ENDC}")
+        
+        # Sort by count descending
+        sorted_labels = sorted(invalid_labels.items(), key=lambda x: x[1], reverse=True)
+        for label, count in sorted_labels:
+            print(f"  {Colors.ORANGE}'{label}'{Colors.ENDC}: {count} occurrences")
+            
+        print(f"{Colors.YELLOW}{'─' * 50}{Colors.ENDC}")
+        print(f"\n{Colors.YELLOW}Summary:{Colors.ENDC}")
+        print(f"  Total invalid labels: {len(invalid_labels)}")
+        print(f"  Total affected rows: {total_affected} out of {total_rows} ({percentage:.1f}%)")
+        
+        # Ask user if they want to continue
+        response = input(f"\n{Colors.CYAN}Do you want to continue anyway? (y/n): {Colors.ENDC}").strip().lower()
+        if response != 'y':
+            print(f"{Colors.RED}Exiting due to invalid labels.{Colors.ENDC}")
+            sys.exit(1)
+        print(f"\n{Colors.GREEN}Continuing with processing...{Colors.ENDC}")
+    else:
+        print(f"{Colors.GREEN}✓ All gold labels are valid!{Colors.ENDC}")
 
     # Initialize the pipeline
     pipeline = TextToKGPipeline(
         llm=azure_llm(model_prefix="GPT41", temperature=0.0), add_labels=True
     ).compile()
 
-    for row in dataset:
+    for idx, row in enumerate(dataset):
+        # Print separator and row indicator
+        print(f"\n{Colors.BLUE}{'━' * 80}{Colors.ENDC}")
+        print(f"{Colors.HEADER}{Colors.BOLD}Processing row {idx + 1} of {len(dataset)}{Colors.ENDC}")
+        
         # Get the actual labels from the dataset
         gold_labels = ast.literal_eval(row["gold_labels"])
         if not gold_labels:
@@ -394,20 +489,23 @@ def main(args) -> None:
                 # Commit the changes to the database
                 conn.commit()
             except Exception as e:
-                print(f"Error calculating metrics: {e}")
+                print(f"{Colors.RED}Error calculating metrics: {e}{Colors.ENDC}")
                 continue
         except ValueError as e:
-            print(f"ValueError processing labels: {e}")
+            print(f"{Colors.RED}ValueError processing labels: {e}{Colors.ENDC}")
             continue
         except KeyError as e:
-            print(f"KeyError processing labels: {e}")
+            print(f"{Colors.RED}KeyError processing labels: {e}{Colors.ENDC}")
             continue
+        
+        # Add spacing after each row processing
+        print()
 
     # Write to Excel file
     write_to_excel(cursor, args.output_excel)
 
     conn.close()
-    print(f"\nMetrics saved to: {args.output_excel}")
+    print(f"\n{Colors.GREEN}{Colors.BOLD}Metrics saved to: {args.output_excel}{Colors.ENDC}")
 
 
 def create_argument_parser():

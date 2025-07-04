@@ -39,12 +39,12 @@ class TransformToKGNode(BaseNode):
             """
 
             print(
-                f"    → Node 3: TransformToKGNode (validation runs: {state.validation_runs})"
+                f"\033[93m    → Node 3: TransformToKGNode (validation runs: {state.validation_runs})\033[0m"
             )
 
             # Check if entity extraction failed
             if state.entity_extraction_failed:
-                print("    → Entity extraction failed - creating minimal JSON-LD")
+                print("\033[93m    → Entity extraction failed - creating minimal JSON-LD\033[0m")
                 minimal_jsonld = json.dumps({
                     "@context": "https://schema.org",
                     "@type": "Thing"
@@ -97,7 +97,7 @@ class TransformToKGNode(BaseNode):
                     formatted_schemas_list.append(schema_header)
                 except yaml.YAMLError as e:
                     print(
-                        f"YAML parsing error for schema '{key}': {e}. Using raw content."
+                        f"\033[93mYAML parsing error for schema '{key}': {e}. Using raw content.\033[0m"
                     )
                     # Try to ultra-shorten even if YAML parsing failed
                     try:
@@ -118,7 +118,7 @@ class TransformToKGNode(BaseNode):
                     formatted_schemas_list.append(schema_header)
                 except Exception as e:
                     print(
-                        f"Unexpected error formatting schema '{key}': {e}. Skipping this schema."
+                        f"\033[91mUnexpected error formatting schema '{key}': {e}. Skipping this schema.\033[0m"
                     )
                     continue
             formatted_schemas = "\n\n".join(formatted_schemas_list)
@@ -205,7 +205,7 @@ Analyseer de fouten en genereer een GECORRIGEERDE versie van de JSON-LD."""
             # Update the state with both the file path AND content
             state.json_ld_paths.append(file_path)
             state.json_ld_contents.append(json_ld)
-            print(f"    → Saved JSON-LD to {file_path}")
+            print(f"\033[92m    → Saved JSON-LD to {file_path}\033[0m")
             return state
 
         return _node
