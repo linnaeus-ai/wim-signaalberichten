@@ -40,6 +40,5 @@ Richtlijnen:
 - Controleer zorgvuldig op ontbrekende entiteiten en relaties, inclusief samenwerkingen, financiële verbanden, tijdsgebonden acties en doelgroepen
 - Vermijd generieke of incorrecte classificaties door zorgvuldig de rol, functie, of context van de entiteit te analyseren
 
-Tekst om te analyseren:
 {INPUT_TEXT}
 """

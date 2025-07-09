@@ -216,6 +216,7 @@ def setup_local_db(local_db_path: str) -> tuple[sqlite3.Connection, sqlite3.Curs
         """
         CREATE TABLE IF NOT EXISTS texts_and_labels (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            unique_id INTEGER,
             text TEXT,
             gold_labels TEXT,
             generated_labels TEXT
@@ -261,6 +262,10 @@ def load_data_source(args, cursor):
                 missing_columns.append(f"text column '{args.text_column}'")
             if args.labels_column not in df.columns:
                 missing_columns.append(f"labels column '{args.labels_column}'")
+            if args.product_column not in df.columns:
+                missing_columns.append(f"product column '{args.product_column}'")
+            if args.unique_id_column not in df.columns:
+                missing_columns.append(f"unique id column '{args.unique_id_column}'")
                 
             if missing_columns:
                 print(f"{Colors.RED}Error: The following columns were not found: {', '.join(missing_columns)}{Colors.ENDC}")
@@ -270,12 +275,16 @@ def load_data_source(args, cursor):
                 print(f"\n{Colors.YELLOW}Please specify the correct column names using:{Colors.ENDC}")
                 print(f"  {Colors.CYAN}--text-column <column_name>{Colors.ENDC}   for the text to process")
                 print(f"  {Colors.CYAN}--labels-column <column_name>{Colors.ENDC} for the validated labels")
+                print(f"  {Colors.CYAN}--product-column <column_name>{Colors.ENDC} for the product or service of the text")
+                print(f"  {Colors.CYAN}--unique-id-column <column_name>{Colors.ENDC} for the unique id of the text")
                 sys.exit(1)
             
             # Rename columns to match expected format
             df = df.rename(columns={
                 args.text_column: 'text',
-                args.labels_column: 'gold_labels'
+                args.labels_column: 'gold_labels',
+                args.product_column: 'category',
+                args.unique_id_column: 'unique_id'
             })
             
             # Convert labels to string format if needed (Excel might have lists as strings)
@@ -285,7 +294,9 @@ def load_data_source(args, cursor):
                 )
             
             # Convert to HuggingFace Dataset
-            dataset = Dataset.from_pandas(df[['text', 'gold_labels']])
+            dataset = Dataset.from_pandas(df[['unique_id', 'text', 'gold_labels', 'category']])
+            if args.limit:
+                dataset = dataset.select(range(args.limit))
             print(f"{Colors.GREEN}Loaded {len(dataset)} rows from Excel file: {args.excel_file}{Colors.ENDC}")
             
         except FileNotFoundError:
@@ -321,7 +332,7 @@ def load_data_source(args, cursor):
         # Rename columns to match expected format
         dataset = dataset.rename_columns({
             'Synthetic Text': 'text',
-            'validated_labels': 'gold_labels'
+            'validated_labels': 'gold_labels',
         })
     
     return dataset
@@ -336,7 +347,7 @@ def write_to_excel(cursor: sqlite3.Cursor, excel_path: str) -> None:
     texts_and_labels = cursor.fetchall()
     df_texts = pd.DataFrame(
         texts_and_labels,
-        columns=["id", "text", "gold_labels", "generated_labels"],
+        columns=["id", "unique_id", "text", "gold_labels", "generated_labels"],
     )
     df_texts["gold_labels"] = df_texts["gold_labels"].apply(
         lambda x: ast.literal_eval(x) if isinstance(x, str) else x
@@ -345,6 +356,7 @@ def write_to_excel(cursor: sqlite3.Cursor, excel_path: str) -> None:
         lambda x: ast.literal_eval(x) if isinstance(x, str) else x
     )
     df_texts["id"] = df_texts["id"].astype(int)
+    df_texts["unique_id"] = df_texts["unique_id"].astype(str)
     df_texts = df_texts.sort_values(by="id").reset_index(drop=True)
 
     # Get the scores from the database
@@ -455,6 +467,7 @@ def main(args) -> None:
         # Initialize the pipeline with the state and run it
         state = TextToKGState(
             text=row["text"],
+            category=row["category"]
         )
         state = pipeline.invoke(state)
 
@@ -471,8 +484,9 @@ def main(args) -> None:
             try:
                 # Add the text and labels to the database
                 cursor.execute(
-                    "INSERT INTO texts_and_labels (text, gold_labels, generated_labels) VALUES (?, ?, ?)",
+                    "INSERT INTO texts_and_labels (unique_id, text, gold_labels, generated_labels) VALUES (?, ?, ?, ?)",
                     (
+                        row["unique_id"],
                         row["text"],
                         str(gold_labels),
                         str(beleving_generated + onderwerp_generated),
@@ -546,6 +560,16 @@ Examples:
         help='Name of the labels column in Excel file (required with --excel-file)'
     )
     data_group.add_argument(
+        '--product-column',
+        type=str,
+        help='Product or service column in Excel file (required with --excel-file)'
+    )
+    data_group.add_argument(
+        '--unique-id-column',
+        type=str,
+        help='Unique id of the texts column in Excel file (required with --excel-file)'
+    )
+    data_group.add_argument(
         '--hf-dataset',
         type=str,
         default='UWV/wim_synthetic_data_for_testing',
@@ -554,8 +578,8 @@ Examples:
     data_group.add_argument(
         '--limit',
         type=int,
-        default=10,
-        help='Number of rows to process from HuggingFace dataset (default: %(default)s)'
+        default=None,
+        help='Number of rows to process from dataset (default: %(default)s)'
     )
     
     # Output options
@@ -582,7 +606,7 @@ if __name__ == "__main__":
     
     # Validate arguments
     if args.excel_file:
-        if not args.text_column or not args.labels_column:
-            parser.error("--text-column and --labels-column are required when using --excel-file")
+        if not args.text_column or not args.labels_column or not args.product_column or not args.unique_id_column:
+            parser.error("--text-column, --labels-column, --product-column, and --unique-id-column are required when using --excel-file")
     
     main(args)

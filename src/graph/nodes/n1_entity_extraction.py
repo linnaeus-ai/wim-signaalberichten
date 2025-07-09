@@ -89,12 +89,18 @@ class EntityExtraction(BaseNode):
                 )
             # NOTE: We don't use a structured output because it drastically decreases the specificity of the results
             # Let any exceptions from invoke propagate (infrastructure failures)
+            if state.category:
+                category = state.category 
+                input_text = f"Product of dienst van toepassing:\n\n{category}\n\nTekst om te analyseren:\n\n{state.text}"
+            else: 
+                input_text = state.text
+
             response = llm_to_use.invoke(
                 [
                     SystemMessage(content=ENTITY_EXTRACTION_SYSTEM_PROMPT),
                     HumanMessage(
                         content=ENTITY_EXTRACTION_HUMAN_PROMPT.format(
-                            INPUT_TEXT=state.text,
+                            INPUT_TEXT=input_text,
                         )
                     ),
                 ]

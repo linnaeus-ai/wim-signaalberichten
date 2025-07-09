@@ -179,11 +179,17 @@ class AddLabelsNode(BaseNode):
             if "No subtopic found" not in beleving_labels:
                 beleving_labels.append("No subtopic found")
 
+            if state.category:
+                category = state.category 
+                input_text = f"Product of dienst van toepassing:\n\n{category}\n\nTekst:\n\n{state.text}"
+            else: 
+                input_text = state.text
+
             # Format the human prompt
             human_prompt = ADD_LABELS_HUMAN_PROMPT.format(
                 ONDERWERP_LIST="\n".join(onderwerp_labels),
                 BELEVING_LIST="\n".join(beleving_labels),
-                INPUT_TEXT=state.text,
+                INPUT_TEXT=input_text,
             )
 
             # Invoke the llm
@@ -194,13 +200,18 @@ class AddLabelsNode(BaseNode):
                 ]
             )
 
+
             # Extract labels from both categories
+            reasoning_response = response.reasoning
             onderwerp_response = response.onderwerp_labels
             beleving_response = response.beleving_labels
 
             # Create combined topics list for validation
             all_valid_onderwerp = onderwerp_labels
             all_valid_beleving = beleving_labels
+
+            # Reasoning tekst
+            print(f"    Beredenering labelkeuze: {reasoning_response}")
             
             # Validate onderwerp labels
             validated_onderwerp = [

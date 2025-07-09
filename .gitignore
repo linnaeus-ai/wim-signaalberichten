@@ -165,3 +165,4 @@ $RECYCLE.BIN/
 # Project specific
 src/data/*.xlsx
 src/data/TOPICS.md
+src/data/tmp

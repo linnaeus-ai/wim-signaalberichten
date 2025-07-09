@@ -16,6 +16,7 @@ Selecteer alleen de labels die relevant zijn uit beide categorieën.
 {BELEVING_LIST}
 
 **Outputvoorbeeld**:
+Reasoning: <Korte beredenering welke labels het best passen bij de tekst.>
 Onderwerp: [Parkeervergunning/abonnement, Parkeerkosten]
 Beleving: [Communicatie, Duidelijkheid]
 

@@ -10,6 +10,9 @@ class TextToKGState(BaseModel):
     text: str = Field(
         ..., description="Input text to be processed into a knowledge graph."
     )
+    category: Optional[str] = Field(
+        None, description="Product/Service category of the text."
+    )
     entity_extraction_output: Optional[Dict[str, Union[List[List[str]], str]]] = Field(
         None,
         description="Output from the entity extraction process, containing summary, entities, and relations.",

@@ -20,6 +20,10 @@ class RetrieveSchemaOrgStructuredOutput(BaseModel):
 
 
 class AddLabelsStructuredOutput(BaseModel):
+    reasoning: str = Field(
+        ...,
+        description="Een uitleg waarom de labels gekozen zijn, in het format: 'Omdat [reasoning], zijn dit de beste labels bij deze tekst.'",
+    )
     onderwerp_labels: List[str] = Field(
         ...,
         description="Lijst van onderwerp labels (waar gaat het over) die van toepassing zijn op de tekst. Kies 'No subtopic found' als er geen passend label is.",
