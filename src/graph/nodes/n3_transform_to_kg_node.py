@@ -177,19 +177,75 @@ Analyseer de fouten en genereer een GECORRIGEERDE versie van de JSON-LD."""
                 ]
             )
 
-            # Ensure the response is only a dict
-            def extract_dict_from_string(json_string):
-                # Use regular expression to find the JSON part
-                pattern = r"(\{.*\})"
-                match = re.search(pattern, json_string, re.DOTALL)
-                if match:
-                    json_part = match.group(0)
-                    return json_part
-                else:
-                    return None
+            # Ensure the response is valid JSON-LD (either single object or array)
+            def extract_json_ld_from_string(json_string):
+                # First check if the entire string is valid JSON as-is
+                try:
+                    json.loads(json_string)
+                    return json_string
+                except:
+                    pass
+                
+                # Try to find an array pattern [...]
+                array_pattern = r"(\[.*\])"
+                array_match = re.search(array_pattern, json_string, re.DOTALL)
+                if array_match:
+                    try:
+                        json.loads(array_match.group(0))
+                        return array_match.group(0)
+                    except:
+                        pass
+                
+                # Look for multiple objects pattern {...},{...}
+                # Use non-greedy matching to avoid capturing too much
+                multi_obj_pattern = r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}(?:\s*,\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})*)'
+                multi_match = re.search(multi_obj_pattern, json_string, re.DOTALL)
+                if multi_match and ',' in multi_match.group(0):
+                    # Multiple objects found, wrap in array
+                    content = multi_match.group(0)
+                    wrapped = f"[{content}]"
+                    try:
+                        json.loads(wrapped)
+                        return wrapped
+                    except:
+                        pass
+                
+                # Try single object pattern
+                single_obj_pattern = r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})'
+                single_match = re.search(single_obj_pattern, json_string, re.DOTALL)
+                if single_match:
+                    try:
+                        json.loads(single_match.group(0))
+                        return single_match.group(0)
+                    except:
+                        pass
+                
+                # Last resort: try to find any valid JSON structure
+                # Split by common delimiters and test each part
+                for delimiter in ['\n\n', '\n', '},', '}]']:
+                    parts = json_string.split(delimiter)
+                    for i, part in enumerate(parts):
+                        if not part.strip():
+                            continue
+                        # Try to complete partial JSON
+                        test_strings = [
+                            part,
+                            part + '}',
+                            part + '}]',
+                            '{' + part,
+                            '[{' + part + '}]'
+                        ]
+                        for test in test_strings:
+                            try:
+                                json.loads(test)
+                                return test
+                            except:
+                                continue
+                
+                return None
 
             # Extract the JSON-LD from the response
-            json_ld = extract_dict_from_string(response.content)
+            json_ld = extract_json_ld_from_string(response.content)
 
             if json_ld is None:
                 raise Exception("The response does not contain a valid JSON-LD object.")

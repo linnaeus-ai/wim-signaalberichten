@@ -64,7 +64,17 @@ def get_labels_from_json_ld(state: TextToKGState) -> tuple[list, list]:
     Extracts labels from the JSON-LD content in the state.
     """
     beleving, onderwerp = [], []
-    json_ld = json.loads(state["json_ld_contents"][-1])
+    
+    try:
+        json_ld = json.loads(state["json_ld_contents"][-1])
+    except json.JSONDecodeError as e:
+        print(f"{Colors.YELLOW}Warning: Failed to parse JSON-LD in metrics: {str(e)}{Colors.ENDC}")
+        return beleving, onderwerp  # Return empty lists
+    
+    # Handle both single object and array formats
+    if isinstance(json_ld, list):
+        # For arrays, use the first object
+        json_ld = json_ld[0] if len(json_ld) > 0 else {}
 
     if "about" in json_ld:
         for item in json_ld["about"]:
@@ -527,17 +537,22 @@ def main(args) -> None:
         print(f"\n{Colors.BLUE}{'━' * 80}{Colors.ENDC}")
         print(f"{Colors.HEADER}{Colors.BOLD}Processing row {idx + 1} of {len(dataset)}{Colors.ENDC}")
         
-        # Get the actual labels from the dataset
-        gold_labels = ast.literal_eval(row["gold_labels"])
-        if not gold_labels:
-            gold_labels = ["No subtopic found"]
+        try:
+            # Get the actual labels from the dataset
+            gold_labels = ast.literal_eval(row["gold_labels"])
+            if not gold_labels:
+                gold_labels = ["No subtopic found"]
 
-        # Initialize the pipeline with the state and run it
-        state = TextToKGState(
-            text=row["text"],
-            category=row["category"]
-        )
-        state = pipeline.invoke(state)
+            # Initialize the pipeline with the state and run it
+            state = TextToKGState(
+                text=row["text"],
+                category=row["category"]
+            )
+            state = pipeline.invoke(state)
+        except Exception as e:
+            print(f"{Colors.RED}Error processing row {idx + 1}: {str(e)}{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Skipping this row and continuing...{Colors.ENDC}")
+            continue
         
         # Cleanup n3 files after successful pipeline completion
         if state.get('n5_file_paths'):

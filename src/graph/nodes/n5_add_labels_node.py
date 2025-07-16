@@ -65,11 +65,34 @@ class AddLabelsNode(BaseNode):
             Returns:
                 str: Updated JSON-LD string with labels added to the "about" key.
             """
-            json_ld = json.loads(state.json_ld_contents[-1])
+            try:
+                json_ld = json.loads(state.json_ld_contents[-1])
+            except json.JSONDecodeError as e:
+                print(f"\033[93m    → Warning: Failed to parse JSON-LD: {str(e)}\033[0m")
+                print(f"\033[93m    → Creating minimal valid JSON-LD structure\033[0m")
+                # Create a minimal valid JSON-LD structure
+                json_ld = {
+                    "@context": "https://schema.org",
+                    "@type": "Thing",
+                    "description": "Failed to parse original JSON-LD content"
+                }
 
-            # Chech if "about" key exists, if not, initialize it
-            if "about" not in json_ld:
-                json_ld["about"] = []
+            # Handle both single object and array of objects
+            if isinstance(json_ld, list):
+                # For arrays, we'll add labels to the first object (main entity)
+                if len(json_ld) > 0:
+                    main_object = json_ld[0]
+                else:
+                    # Empty array, create a minimal object
+                    main_object = {"@context": "https://schema.org", "@type": "Thing"}
+                    json_ld = [main_object]
+            else:
+                # Single object
+                main_object = json_ld
+
+            # Check if "about" key exists in main object, if not, initialize it
+            if "about" not in main_object:
+                main_object["about"] = []
 
             # Add the labels to the "about" key
             for label in labels:
@@ -83,10 +106,10 @@ class AddLabelsNode(BaseNode):
                 if topic_set_name:
 
                     # Check if "about" value is list
-                    if not isinstance(json_ld["about"], list):
-                        json_ld["about"] = [json_ld["about"]]
+                    if not isinstance(main_object["about"], list):
+                        main_object["about"] = [main_object["about"]]
 
-                    json_ld["about"].append(
+                    main_object["about"].append(
                         {
                             "@type": "DefinedTerm",
                             "name": label,
@@ -266,8 +289,14 @@ class AddLabelsNode(BaseNode):
                 
                 # Write the labeled JSON-LD to file with pretty formatting
                 with open(n5_file_path, "w") as f:
-                    json_obj = json.loads(state.json_ld_contents[-1])
-                    json.dump(json_obj, f, indent=2, ensure_ascii=False)
+                    try:
+                        json_obj = json.loads(state.json_ld_contents[-1])
+                        json.dump(json_obj, f, indent=2, ensure_ascii=False)
+                    except json.JSONDecodeError as e:
+                        print(f"\033[93m    → Warning: Failed to parse final JSON-LD: {str(e)}\033[0m")
+                        print(f"\033[93m    → Saving raw content instead\033[0m")
+                        # Save the raw content as-is
+                        f.write(state.json_ld_contents[-1])
                 
                 # Add the path to state
                 state.n5_file_paths.append(n5_file_path)
