@@ -146,9 +146,11 @@ python src/scripts/run_metrics.py
 python src/scripts/run_metrics.py --limit 100
 
 # Process Excel file with custom column names
-python src/scripts/run_metrics.py --excel-file src/data/Sample_10_teksten.xlsx \
+`python src/scripts/run_metrics.py --excel-file src/data/Sample_10_teksten.xlsx \
   --text-column "Toelichting_masked" \
-  --labels-column "Categorieën samengevoegd"
+  --labels-column "Categorieën samengevoegd"` \
+  --product-column "Product/Dienst" \
+  --unique-id-column "Uniek_ID"
 
 # Specify custom output locations
 python src/scripts/run_metrics.py --output-excel custom_metrics.xlsx --db-path custom.db

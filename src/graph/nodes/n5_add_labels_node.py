@@ -1,5 +1,6 @@
 import json
 import pandas as pd
+import os
 
 from itertools import chain
 
@@ -251,6 +252,26 @@ class AddLabelsNode(BaseNode):
             state.json_ld_contents[-1] = _make_labels_jsonld_str(
                 state, self._topics_dict, labels
             )
+
+            # Save the labeled JSON-LD to a file with n5_ prefix
+            # Extract the UUID from the corresponding n3 file path
+            if state.json_ld_paths:
+                n3_path = state.json_ld_paths[-1]
+                # Extract UUID from n3 filename (format: n3_UUID.json)
+                uuid_part = n3_path.split('n3_')[-1].replace('.json', '')
+                n5_file_path = f"src/data/tmp/n5_{uuid_part}.json"
+                
+                # Ensure the directory exists
+                os.makedirs(os.path.dirname(n5_file_path), exist_ok=True)
+                
+                # Write the labeled JSON-LD to file with pretty formatting
+                with open(n5_file_path, "w") as f:
+                    json_obj = json.loads(state.json_ld_contents[-1])
+                    json.dump(json_obj, f, indent=2, ensure_ascii=False)
+                
+                # Add the path to state
+                state.n5_file_paths.append(n5_file_path)
+                print(f"\033[92m    → Saved labeled JSON-LD to {n5_file_path}\033[0m")
 
             return state
 

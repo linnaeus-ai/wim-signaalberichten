@@ -195,7 +195,7 @@ Analyseer de fouten en genereer een GECORRIGEERDE versie van de JSON-LD."""
                 raise Exception("The response does not contain a valid JSON-LD object.")
 
             # Write the json-ld to a temp file with a uuid
-            file_path = f"src/data/tmp/{uuid.uuid1()}.json"
+            file_path = f"src/data/tmp/n3_{uuid.uuid1()}.json"
 
             # Ensure the directory exists
             os.makedirs(os.path.dirname(file_path), exist_ok=True)

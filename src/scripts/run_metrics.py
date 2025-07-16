@@ -11,6 +11,7 @@ import pandas as pd
 from datasets import load_dataset, Dataset
 from graph.utils import azure_llm
 from graph import TextToKGPipeline, TextToKGState
+from graph.utils.cleanup import cleanup_n3_files
 
 # ANSI color codes
 class Colors:
@@ -470,6 +471,10 @@ def main(args) -> None:
             category=row["category"]
         )
         state = pipeline.invoke(state)
+        
+        # Cleanup n3 files after successful pipeline completion
+        if state.get('n5_file_paths'):
+            cleanup_n3_files(state)
 
         # Get tp, tn, fp, fn for each signal type
         try:

@@ -5,6 +5,7 @@ import asyncio
 import json
 from graph.text_to_kg_pipeline import TextToKGPipeline
 from graph.utils import azure_llm
+from graph.utils.cleanup import cleanup_n3_files, cleanup_old_tmp_files
 
 # ANSI color codes
 class Colors:
@@ -129,6 +130,14 @@ async def test_usage():
     print(f"{Colors.HEADER}{Colors.BOLD}Summary:{Colors.ENDC}")
     print(f"  • Result keys: {Colors.CYAN}{', '.join(result.keys())}{Colors.ENDC}")
     print(f"  • Total processing nodes: {Colors.GREEN}5{Colors.ENDC} (Entity Extraction → Schema Mapping → KG Generation → Validation → Labeling)")
+    
+    # Cleanup n3 files after successful n5 creation
+    if result.get("n5_file_paths"):
+        print(f"\n{Colors.YELLOW}Performing cleanup...{Colors.ENDC}")
+        cleanup_n3_files(result)
+        # Optionally clean up old files
+        cleanup_old_tmp_files(max_age_hours=24)
+        print(f"{Colors.GREEN}✓ Cleanup completed{Colors.ENDC}")
     
 if __name__ == "__main__":
     asyncio.run(test_usage())
