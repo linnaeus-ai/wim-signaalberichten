@@ -316,25 +316,92 @@ def load_data_source(args, cursor):
         if last_id is None:
             last_id = 0
             
-        # Load dataset and apply limit
-        raw_dataset = load_dataset(args.hf_dataset, split="test")
-        
-        # Calculate the range to process
-        start_idx = last_id
-        end_idx = min(last_id + args.limit, len(raw_dataset))
-        
-        if start_idx >= len(raw_dataset):
-            print(f"{Colors.YELLOW}All rows already processed (last_id={last_id}, dataset size={len(raw_dataset)}){Colors.ENDC}")
-            sys.exit(0)
+        # Determine split and column mappings based on dataset
+        if args.hf_dataset == 'UWV/wim-synthetic-data-rd':
+            split = "train"
+            raw_dataset = load_dataset(args.hf_dataset, split=split)
             
-        dataset = raw_dataset.select(range(start_idx, end_idx))
-        print(f"{Colors.CYAN}Processing rows {start_idx} to {end_idx-1} from HuggingFace dataset (limit={args.limit}){Colors.ENDC}")
-        
-        # Rename columns to match expected format
-        dataset = dataset.rename_columns({
-            'Synthetic Text': 'text',
-            'validated_labels': 'gold_labels',
-        })
+            # Calculate the range to process
+            start_idx = last_id
+            if args.limit:
+                end_idx = min(last_id + args.limit, len(raw_dataset))
+            else:
+                end_idx = len(raw_dataset)
+            
+            if start_idx >= len(raw_dataset):
+                print(f"{Colors.YELLOW}All rows already processed (last_id={last_id}, dataset size={len(raw_dataset)}){Colors.ENDC}")
+                sys.exit(0)
+                
+            dataset = raw_dataset.select(range(start_idx, end_idx))
+            print(f"{Colors.CYAN}Processing rows {start_idx} to {end_idx-1} from HuggingFace dataset (limit={args.limit}){Colors.ENDC}")
+            
+            # Process the dataset to merge label columns
+            def merge_labels(example):
+                # Combine both label lists
+                all_labels = []
+                
+                # Process onderwerp labels - extract sub-signal part after " - "
+                if example.get('gpt41_onderwerp_labels'):
+                    for label in example['gpt41_onderwerp_labels']:
+                        if ' - ' in label:
+                            # Extract the sub-signal part (after the dash)
+                            sub_label = label.split(' - ', 1)[1]
+                            all_labels.append(sub_label)
+                        else:
+                            all_labels.append(label)
+                
+                # Process beleving labels - extract sub-signal part after " - "
+                if example.get('gpt41_beleving_labels'):
+                    for label in example['gpt41_beleving_labels']:
+                        if ' - ' in label:
+                            # Extract the sub-signal part (after the dash)
+                            sub_label = label.split(' - ', 1)[1]
+                            all_labels.append(sub_label)
+                        else:
+                            all_labels.append(label)
+                
+                return {
+                    'text': example['text'],
+                    'gold_labels': str(all_labels),  # Convert to string format expected by the pipeline
+                    'unique_id': example['signal_id'],
+                    'category': str(example.get('channel', '')),  # Convert channel to string for category
+                }
+            
+            # Map the dataset
+            dataset = dataset.map(merge_labels, remove_columns=dataset.column_names)
+            
+        else:
+            split = "test"
+            raw_dataset = load_dataset(args.hf_dataset, split=split)
+            
+            # Calculate the range to process
+            start_idx = last_id
+            if args.limit:
+                end_idx = min(last_id + args.limit, len(raw_dataset))
+            else:
+                end_idx = len(raw_dataset)
+            
+            if start_idx >= len(raw_dataset):
+                print(f"{Colors.YELLOW}All rows already processed (last_id={last_id}, dataset size={len(raw_dataset)}){Colors.ENDC}")
+                sys.exit(0)
+                
+            dataset = raw_dataset.select(range(start_idx, end_idx))
+            print(f"{Colors.CYAN}Processing rows {start_idx} to {end_idx-1} from HuggingFace dataset (limit={args.limit}){Colors.ENDC}")
+            
+            # Rename columns to match expected format for original dataset
+            dataset = dataset.rename_columns({
+                'Synthetic Text': 'text',
+                'validated_labels': 'gold_labels',
+            })
+            
+            # Add missing columns for compatibility
+            def add_missing_columns(example):
+                return {
+                    'unique_id': str(example.get('id', '')),  # Use id as unique_id if available
+                    'category': '',  # Empty category for original dataset
+                }
+            
+            dataset = dataset.map(add_missing_columns)
     
     return dataset
 
