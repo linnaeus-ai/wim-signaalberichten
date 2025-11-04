@@ -21,3 +21,4 @@ pyyaml
 # Machine learning
 transformers
 torch
+huggingface-hub
