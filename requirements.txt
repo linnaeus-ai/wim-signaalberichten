@@ -17,3 +17,7 @@ datasets
 # Environment and configuration
 python-dotenv
 pyyaml
+
+# Machine learning
+transformers
+torch

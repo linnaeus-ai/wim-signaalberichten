@@ -22,12 +22,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
-# Install Bicep CLI
-RUN curl -Lo /usr/local/bin/bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64 \
-    && chmod +x /usr/local/bin/bicep
+# Install Bicep CLI (architecture-aware)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        BICEP_ARCH="linux-x64"; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        BICEP_ARCH="linux-arm64"; \
+    else \
+        echo "Unsupported architecture: $ARCH"; exit 1; \
+    fi && \
+    curl -Lo /usr/local/bin/bicep "https://github.com/Azure/bicep/releases/latest/download/bicep-$BICEP_ARCH" && \
+    chmod +x /usr/local/bin/bicep
 
 # Verify installations (optional, but good for build logs)
 RUN echo "--- Verification ---" && \
+    echo "Architecture: $(dpkg --print-architecture)" && \
     az --version && \
     bicep --version
 

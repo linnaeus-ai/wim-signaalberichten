@@ -4,12 +4,14 @@ import json
 import os
 import sqlite3
 import sys
+import torch
+import importlib.util
 
 import numpy as np
 import pandas as pd
 
 from datasets import load_dataset, Dataset
-from model import DualHeadModel
+from huggingface_hub import snapshot_download
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 # ANSI color codes
@@ -25,6 +27,14 @@ class Colors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+# Constants
+MODEL_REPO = "UWV/wimbert-synth-v0"
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DTYPE = torch.float16 if DEVICE.type == "cuda" else torch.float32
+
+print(f"🔧 Loading model from {MODEL_REPO}...")
+print(f"🖥️  Device: {DEVICE} ({DTYPE})")
 
 TAXONOMY_FILE = "src/data/Hoofdklantsignalen - Subklantsignalen.xlsx"
 DATA = pd.read_excel(TAXONOMY_FILE)
@@ -58,7 +68,7 @@ BELEVING_SIGNALS = [
 ]
 
 
-def get_labels_from_json_ld(state: TextToKGState) -> tuple[list, list]:
+def get_labels_from_json_ld(state) -> tuple[list, list]:
     """
     Extracts labels from the JSON-LD content in the state.
     """
@@ -95,6 +105,7 @@ def get_labels_from_validated_list(validated_labels: list) -> tuple[list, list]:
     """
     Extracts labels from the validated labels list.
     """
+    
     onderwerp_signals = DATA[DATA["Hoofd_klantsignaal"].isin(ONDERWERP_SIGNALS)][
         "Sub_klantsignaal"
     ].tolist()
@@ -103,7 +114,8 @@ def get_labels_from_validated_list(validated_labels: list) -> tuple[list, list]:
     ].tolist()
 
     beleving, onderwerp = [], []
-    for label in validated_labels:
+    validated_labels_list = [item.strip() for validated_label in validated_labels for item in validated_label.split(",")]
+    for label in validated_labels_list:
         if label in onderwerp_signals:
             onderwerp.append(label)
         elif label in beleving_signals:
@@ -204,13 +216,15 @@ def validate_dataset_labels(dataset) -> dict[str, int]:
     
     for row in dataset:
         try:
-            gold_labels = ast.literal_eval(row["gold_labels"])
+            gold_labels = ast.literal_eval(row["gold_labels"]).toList()
+            print(type(gold_labels))
             if not isinstance(gold_labels, list):
                 gold_labels = []
         except:
             gold_labels = []
             
         for label in gold_labels:
+            print("Label:" + label)
             if label not in all_valid_labels:
                 invalid_label_counts[label] = invalid_label_counts.get(label, 0) + 1
                 
@@ -350,6 +364,7 @@ def load_data_source(args, cursor):
                 all_labels = []
                 
                 # Process onderwerp labels - extract sub-signal part after " - "
+                print("YOOOOOOO" + example.get('gpt41_onderwerp_labels'))
                 if example.get('gpt41_onderwerp_labels'):
                     for label in example['gpt41_onderwerp_labels']:
                         if ' - ' in label:
@@ -461,9 +476,13 @@ def write_to_excel(cursor: sqlite3.Cursor, excel_path: str) -> None:
         with pd.ExcelWriter(excel_path) as writer:
             df_texts.to_excel(writer, sheet_name="texts_and_labels", index=False)
 
+            # Store overall metrics for summary
+            overall_metrics = {}
+
             for signal_type, scores in existing_scores.items():
                 df = pd.DataFrame(scores).T
 
+                # Calculate per-label metrics
                 df["precision"] = np.where(
                     (df["tp"] + df["fp"]) > 0, df["tp"] / (df["tp"] + df["fp"]), 0
                 )
@@ -476,9 +495,101 @@ def write_to_excel(cursor: sqlite3.Cursor, excel_path: str) -> None:
                     / (df["precision"] + df["recall"]),
                     0,
                 )
-                df.to_excel(writer, sheet_name=f"{signal_type}_scores")
+                
+                # Calculate support (actual positive instances) for each label
+                df["support"] = df["tp"] + df["fn"]
+                
+                # Calculate weighted F1 score
+                total_support = df["support"].sum()
+                if total_support > 0:
+                    weighted_f1 = (df["f1_score"] * df["support"]).sum() / total_support
+                    weighted_precision = (df["precision"] * df["support"]).sum() / total_support
+                    weighted_recall = (df["recall"] * df["support"]).sum() / total_support
+                else:
+                    weighted_f1 = 0
+                    weighted_precision = 0
+                    weighted_recall = 0
+                
+                # Calculate macro averages (unweighted)
+                macro_f1 = df["f1_score"].mean()
+                macro_precision = df["precision"].mean()
+                macro_recall = df["recall"].mean()
+                
+                # Add summary row to dataframe
+                summary_row = pd.DataFrame({
+                    "tp": [df["tp"].sum()],
+                    "fp": [df["fp"].sum()],
+                    "fn": [df["fn"].sum()],
+                    "tn": [df["tn"].sum()],
+                    "precision": [weighted_precision],
+                    "recall": [weighted_recall],
+                    "f1_score": [weighted_f1],
+                    "support": [total_support]
+                }, index=["WEIGHTED_AVERAGE"])
+                
+                macro_row = pd.DataFrame({
+                    "tp": [""],
+                    "fp": [""],
+                    "fn": [""],
+                    "tn": [""],
+                    "precision": [macro_precision],
+                    "recall": [macro_recall],
+                    "f1_score": [macro_f1],
+                    "support": [""]
+                }, index=["MACRO_AVERAGE"])
+                
+                # Concatenate with original dataframe
+                df_with_summary = pd.concat([df, pd.DataFrame(index=[""], columns=df.columns), summary_row, macro_row])
+                
+                # Write to Excel
+                df_with_summary.to_excel(writer, sheet_name=f"{signal_type}_scores")
+                
+                # Store overall metrics
+                overall_metrics[signal_type] = {
+                    "weighted_f1": weighted_f1,
+                    "weighted_precision": weighted_precision,
+                    "weighted_recall": weighted_recall,
+                    "macro_f1": macro_f1,
+                    "macro_precision": macro_precision,
+                    "macro_recall": macro_recall,
+                    "total_support": total_support
+                }
+
+            # Create overall summary sheet
+            summary_data = []
+            for signal_type, metrics in overall_metrics.items():
+                summary_data.append({
+                    "Signal Type": signal_type,
+                    "Weighted F1": metrics["weighted_f1"],
+                    "Weighted Precision": metrics["weighted_precision"],
+                    "Weighted Recall": metrics["weighted_recall"],
+                    "Macro F1": metrics["macro_f1"],
+                    "Macro Precision": metrics["macro_precision"],
+                    "Macro Recall": metrics["macro_recall"],
+                    "Total Support": metrics["total_support"]
+                })
+            
+            if summary_data:
+                df_summary = pd.DataFrame(summary_data)
+                df_summary.to_excel(writer, sheet_name="overall_summary", index=False)
 
         print(f"{Colors.GREEN}Metrics written to {excel_path}{Colors.ENDC}")
+        
+        # Print summary to console
+        print(f"\n{Colors.CYAN}{'=' * 60}{Colors.ENDC}")
+        print(f"{Colors.HEADER}{Colors.BOLD}OVERALL METRICS SUMMARY{Colors.ENDC}")
+        print(f"{Colors.CYAN}{'=' * 60}{Colors.ENDC}")
+        
+        for signal_type, metrics in overall_metrics.items():
+            print(f"\n{Colors.BLUE}{signal_type.upper()} SIGNALS:{Colors.ENDC}")
+            print(f"  {Colors.GREEN}Weighted F1 Score: {metrics['weighted_f1']:.4f}{Colors.ENDC}")
+            print(f"  Weighted Precision: {metrics['weighted_precision']:.4f}")
+            print(f"  Weighted Recall: {metrics['weighted_recall']:.4f}")
+            print(f"  Macro F1 Score: {metrics['macro_f1']:.4f}")
+            print(f"  Total Support: {metrics['total_support']}")
+        
+        print(f"{Colors.CYAN}{'=' * 60}{Colors.ENDC}\n")
+        
     except Exception as e:
         print(f"{Colors.RED}Error writing to Excel: {e}{Colors.ENDC}")
 
@@ -526,9 +637,33 @@ def main(args) -> None:
     else:
         print(f"{Colors.GREEN}✓ All gold labels are valid!{Colors.ENDC}")
     
-    # Download wimbert model and tokenizer
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model, tokenizer, config = DualHeadModel.from_pretrained("UWV/wimbert-synth-v0", device=device)
+    # Download wimbert model files (uses HF cache)
+    model_dir = snapshot_download(MODEL_REPO, cache_dir=None)
+    print(model_dir)
+
+    # Dynamic import of model.py from downloaded dir
+    spec = importlib.util.spec_from_file_location("model", f"{model_dir}/model.py")
+    model_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model_module)
+    DualHeadModel = model_module.DualHeadModel
+
+    # Load model + tokenizer + config
+    model, tokenizer, config = DualHeadModel.from_pretrained(model_dir, device=DEVICE)
+
+    # Cast to target dtype
+    if DTYPE == torch.float16:
+        model = model.half()
+
+    # Warm-up inference
+    with torch.no_grad():
+        dummy_input = tokenizer("Warm-up", return_tensors="pt", truncation=True, 
+                            max_length=config["max_length"])
+        _ = model.predict(
+            dummy_input["input_ids"].to(DEVICE), 
+            dummy_input["attention_mask"].to(DEVICE)
+        )
+
+    print(f"✅ Model loaded and warmed up (max_length: {config['max_length']})")
 
 
     for idx, row in enumerate(dataset):
@@ -544,7 +679,7 @@ def main(args) -> None:
 
             # Generated sub_signal labels
             inputs = tokenizer(text, truncation=True, padding="max_length", 
-                   max_length=config["max_length"], return_tensors="pt").to(device)
+                   max_length=config["max_length"], return_tensors="pt").to(DEVICE)
             onderwerp_probs, beleving_probs = model.predict(inputs["input_ids"], inputs["attention_mask"])
 
             # Get labels with probability > 0.9
@@ -552,11 +687,11 @@ def main(args) -> None:
             
             # Get onderwerp labels above threshold
             onderwerp_indices = (onderwerp_probs > threshold).nonzero(as_tuple=True)[1].cpu().numpy()
-            onderwerp_generated = [config["onderwerp_labels"][idx] for idx in onderwerp_indices]
+            onderwerp_generated = [config["labels"]["onderwerp"][idx] for idx in onderwerp_indices]
             
             # Get beleving labels above threshold
             beleving_indices = (beleving_probs > threshold).nonzero(as_tuple=True)[1].cpu().numpy()
-            beleving_generated = [config["beleving_labels"][idx] for idx in beleving_indices]
+            beleving_generated = [config["labels"]["beleving"][idx] for idx in beleving_indices]
 
             # Get the actual sub_signal labels from the dataset
             beleving_actual, onderwerp_actual = get_labels_from_validated_list(
