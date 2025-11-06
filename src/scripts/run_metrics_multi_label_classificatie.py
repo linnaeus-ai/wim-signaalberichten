@@ -114,7 +114,28 @@ def get_labels_from_validated_list(validated_labels: list) -> tuple[list, list]:
     ].tolist()
 
     beleving, onderwerp = [], []
-    validated_labels_list = [item.strip() for validated_label in validated_labels for item in validated_label.split(",")]
+
+    # Special label that contains a comma
+    special_label = "Evenementen, feestdagen en herdenkingen"
+
+    validated_labels_list = []
+    for validated_label in validated_labels:
+        # Check if the special label is present
+        if special_label in validated_label:
+            # Use a unique placeholder that won't appear in normal text
+            placeholder = "___SPECIAL_EVENT_PLACEHOLDER___"
+            # Temporarily replace the comma in the special label with a placeholder
+            temp_label = validated_label.replace(special_label, placeholder)
+            # Split by comma
+            items = [item.strip() for item in temp_label.split(",")]
+            # Replace the placeholder back with the original label
+            items = [item.replace(placeholder, special_label) for item in items]
+            validated_labels_list.extend(items)
+        else:
+            # Normal splitting by comma
+            items = [item.strip() for item in validated_label.split(",")]
+            validated_labels_list.extend(items)
+            
     for label in validated_labels_list:
         if label in onderwerp_signals:
             onderwerp.append(label)
@@ -364,7 +385,6 @@ def load_data_source(args, cursor):
                 all_labels = []
                 
                 # Process onderwerp labels - extract sub-signal part after " - "
-                print("YOOOOOOO" + example.get('gpt41_onderwerp_labels'))
                 if example.get('gpt41_onderwerp_labels'):
                     for label in example['gpt41_onderwerp_labels']:
                         if ' - ' in label:
@@ -682,8 +702,8 @@ def main(args) -> None:
                    max_length=config["max_length"], return_tensors="pt").to(DEVICE)
             onderwerp_probs, beleving_probs = model.predict(inputs["input_ids"], inputs["attention_mask"])
 
-            # Get labels with probability > 0.9
-            threshold = 0.9
+            # Get labels with probability > 0.5
+            threshold = 0.5
             
             # Get onderwerp labels above threshold
             onderwerp_indices = (onderwerp_probs > threshold).nonzero(as_tuple=True)[1].cpu().numpy()
