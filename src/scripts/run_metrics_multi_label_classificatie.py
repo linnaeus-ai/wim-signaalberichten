@@ -50,7 +50,7 @@ ONDERWERP_SIGNALS = [
     "Veiligheid en omgeving",
     "Vervoer",
     "Werk",
-    "Wonenen en ondernemen",
+    "Wonen en ondernemen",
     "Zorg",
 ]
 BELEVING_SIGNALS = [
