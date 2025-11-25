@@ -10,6 +10,8 @@ COPY . .
 
 # Set up for use in VS Code dev containers and install additional tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
     git \
     curl \
     ca-certificates \

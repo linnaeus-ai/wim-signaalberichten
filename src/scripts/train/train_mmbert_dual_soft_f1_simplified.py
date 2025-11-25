@@ -15,6 +15,7 @@ from transformers import AutoTokenizer, AutoModel
 import os
 import json
 import numpy as np
+import argparse
 import random
 import wandb
 from dataset_loader import load_wim_dataset
@@ -650,6 +651,12 @@ def create_argument_parser():
         required=True,
         help="Path to the Excel file containing the Wim dataset."
     )
+    parser.add_argument(
+        "--wandb_key",
+        type=str,
+        required=True,
+        help="Wandb API key for authentication."
+    )
     return parser
 
 
@@ -660,6 +667,8 @@ def main():
     # Validate arguments
     if not args.excel_file_path:
         parser.error("--excel_file_path must be specified")
+    if not args.wandb_key:
+        parser.error("--wandb_key must be specified")
     
     # Enable TensorFloat32 for better performance on modern NVIDIA GPUs
     if torch.cuda.is_available():
@@ -669,6 +678,9 @@ def main():
     device = get_device()
 
     # ============== CONFIGURATION FOR WANDB SWEEPS ==============
+    # Login to wandb
+    wandb.login(key=args.wandb_key)
+
     # Fixed model configuration (not swept)
     model_name = "jhu-clsp/mmBERT-base"
 
@@ -710,7 +722,7 @@ def main():
     # Load RD dataset
     print("\nLoading dataset...")
     texts, onderwerp, beleving, onderwerp_names, beleving_names = load_wim_dataset(
-        max_samples=None, excel_path=args.excel_file_path  # Using full dataset for better training
+        excel_path=args.excel_file_path, max_samples=None  # Using full dataset for better training
     )
 
     print(f"\nDataset loaded:")
@@ -915,12 +927,12 @@ def main():
     print(f"mmBERT: Modern multilingual encoder (1800+ languages, max_length: {max_length})")
 
     # Save final model weights (minimal model saving)
-    save_path = "mmbert_dual_head_final.pt"
+    save_path = "./output/mmbert_dual_head_final.pt"
     torch.save(model.state_dict(), save_path)
     print(f"\nModel weights saved to {save_path}")
 
     # Save Hugging Face-compatible checkpoint (encoder + tokenizer + custom heads)
-    hf_dir = "mmbert_dual_head_hf"
+    hf_dir = "./output/mmbert_dual_head_hf"
     os.makedirs(hf_dir, exist_ok=True)
     # Save base encoder and tokenizer in HF format
     model.encoder.save_pretrained(hf_dir)

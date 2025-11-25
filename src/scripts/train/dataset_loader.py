@@ -7,7 +7,7 @@ import numpy as np
 from datasets import load_dataset
 
 
-def load_wim_dataset(max_samples=None, excel_path, test_size=0.2):
+def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
     """
     Load dataset and encode multi-labels.
     
@@ -15,9 +15,9 @@ def load_wim_dataset(max_samples=None, excel_path, test_size=0.2):
     - onderwerp: What the message is about
     - beleving: How the citizen experienced the interaction
     Args:
-        max_samples: Limit number of samples (None = all samples)
         excel_path: Path to the Excel file containing the dataset
         test_size: Fraction of data to reserve for testing (default: 0.2)
+        max_samples: Limit number of samples (None = all samples)
     Returns:
         texts: List of conversation strings
         onderwerp_encoded: numpy array [n_samples, n_onderwerp] - multi-hot encoded topics
@@ -54,7 +54,7 @@ def load_wim_dataset(max_samples=None, excel_path, test_size=0.2):
         print(f"Limited to {len(ds)} samples")
     
     # Split into train and test
-    split_dataset = ds.train_test_split(test_size=test_size, seed=random_seed)
+    split_dataset = ds.train_test_split(test_size=test_size, seed=42)
     ds_train = split_dataset['train']
     ds_test = split_dataset['test']
 
@@ -65,9 +65,9 @@ def load_wim_dataset(max_samples=None, excel_path, test_size=0.2):
     beleving_set = set()
 
     for sample in ds:
-        for label in sample['onderwerp_labels']:
+        for label in sample['onderwerp_labels'].split(';'):
             onderwerp_set.add(label)
-        for label in sample['beleving_labels']:
+        for label in sample['beleving_labels'].split(';'):
             beleving_set.add(label)
 
     # Sort labels alphabetically for consistent indexing across runs
@@ -96,12 +96,12 @@ def load_wim_dataset(max_samples=None, excel_path, test_size=0.2):
         texts.append(sample['text'])
 
         # Encode onderwerp labels (multi-hot)
-        for label in sample['onderwerp_labels']:
+        for label in sample['onderwerp_labels'].split(';'):
             idx = onderwerp_to_idx[label]
             onderwerp_encoded[i, idx] = 1.0
 
         # Encode beleving labels (multi-hot)
-        for label in sample['beleving_labels']:
+        for label in sample['beleving_labels'].split(';'):
             idx = beleving_to_idx[label]
             beleving_encoded[i, idx] = 1.0
 
