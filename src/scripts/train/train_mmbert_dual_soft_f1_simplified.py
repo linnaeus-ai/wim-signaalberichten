@@ -188,7 +188,7 @@ def calculate_soft_f1(logits, labels, logit_threshold=None, temperature=1.0):
 
 
 def evaluate(model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
-             onderwerp_names, beleving_names, num_samples, max_length, amp_dtype=torch.bfloat16):
+             onderwerp_names, beleving_names, num_samples, max_length, amp_dtype=torch.float16):
     """
     Evaluate model on validation set and return metrics.
     Args:
@@ -202,7 +202,7 @@ def evaluate(model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
         beleving_names: List of beleving label names
         num_samples: Number of samples to evaluate (None = all)
         max_length: Max sequence length
-        amp_dtype: Data type for autocasting (default: torch.bfloat16)
+        amp_dtype: Data type for autocasting (default: torch.float16)
     Returns:
         dict: Dictionary containing all evaluation metrics
     """
@@ -391,7 +391,7 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
                onderwerp_names, beleving_names, device,
                *, start_epoch, end_epoch, phase_name="train",
                optimizer, scheduler, temperature, alpha,
-               max_length, global_step, amp_dtype=torch.bfloat16):
+               max_length, global_step, amp_dtype=torch.float16):
     """
     Run training for a range of epochs.
     Args:
@@ -410,12 +410,16 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
         alpha: Loss weighting (F1 vs BCE)
         max_length: Max sequence length
         global_step: Starting global step counter
-        amp_dtype: Data type for autocasting (default: torch.bfloat16)
+        amp_dtype: Data type for autocasting (default: torch.float16)
     Returns:
         Updated global_step
     """
     num_epochs = end_epoch - start_epoch
     phase_total_steps = max(1, len(train_loader) * num_epochs)
+
+    # Initialize GradScaler for FP16 to prevent underflow
+    use_scaler = (amp_dtype == torch.float16)
+    scaler = torch.amp.GradScaler(device=device.type, enabled=use_scaler)
 
     model.train()
 
@@ -536,8 +540,12 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
                         log_dict["train/threshold_lr"] = threshold_lr
                     wandb.log(log_dict, step=global_step)
 
-            # Backward pass
-            loss.backward()
+            # Backward pass with Scaler
+            if use_scaler:
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)  # Unscale gradients before clipping
+            else:
+                loss.backward()
 
             # Calculate gradient norms
             with torch.no_grad():
@@ -566,7 +574,11 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             # Update weights and LR
-            optimizer.step()
+            if use_scaler:
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                optimizer.step()
             scheduler.step()
 
             # Update counters
@@ -766,7 +778,7 @@ def main():
     )
 
     # Move model to device
-    model = model.to(device, dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32)
+    model = model.to(device, dtype=torch.float16)
 
     # Ensure thresholds match encoder dtype for mixed precision safety
     encoder_dtype = next(model.encoder.parameters()).dtype
@@ -779,9 +791,8 @@ def main():
     print(f"  Onderwerp head: {len(onderwerp_names)} outputs")
     print(f"  Beleving head: {len(beleving_names)} outputs")
 
-    amp_dtype = "bfloat16" if device.type == 'cuda' else "float32"
-    print(f"Using Pure BF16 Training (Weights: {encoder_dtype}, Ops: {amp_dtype}")
-
+    amp_dtype = torch.float16  # Using pure FP16 training
+    print(f"Using Pure FP16 Training (Weights: {encoder_dtype}, Ops: {amp_dtype})")
     # Split data into train/val (80/20)
     split_idx = int(0.8 * len(texts))
     train_texts = texts[:split_idx]
@@ -867,7 +878,7 @@ def main():
         optimizer=optimizer, scheduler=scheduler,
         temperature=temperature, alpha=alpha,
         max_length=max_length, global_step=0,
-        amp_dtype=torch.bfloat16
+        amp_dtype=amp_dtype
     )
 
     # Training complete
@@ -883,7 +894,7 @@ def main():
     print(f"\nEvaluating on 500 validation samples...")
     final_metrics = evaluate(
         model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
-        onderwerp_names, beleving_names, num_samples=500, max_length=max_length, amp_dtype=torch.bfloat16
+        onderwerp_names, beleving_names, num_samples=500, max_length=max_length, amp_dtype=amp_dtype
     )
 
     # Print overall metrics

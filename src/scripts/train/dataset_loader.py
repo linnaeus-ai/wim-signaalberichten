@@ -28,7 +28,7 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
 
     # Load RD dataset
     print(f"Loading dataset from Excel file: {excel_path}")
-    ds = load_dataset('csv', data_files=excel_path, split='train')
+    ds = load_dataset('csv', data_files=excel_path, delimiter='; ', split='train')
     
     # Keep only essential columns from RD dataset
     ds= ds.select_columns(['text', 'onderwerp_labels', 'beleving_labels'])
@@ -65,9 +65,9 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
     beleving_set = set()
 
     for sample in ds:
-        for label in sample['onderwerp_labels'].split(';'):
+        for label in sample['onderwerp_labels'].split('; '):
             onderwerp_set.add(label)
-        for label in sample['beleving_labels'].split(';'):
+        for label in sample['beleving_labels'].split('; '):
             beleving_set.add(label)
 
     # Sort labels alphabetically for consistent indexing across runs
@@ -96,12 +96,12 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
         texts.append(sample['text'])
 
         # Encode onderwerp labels (multi-hot)
-        for label in sample['onderwerp_labels'].split(';'):
+        for label in sample['onderwerp_labels'].split('; '):
             idx = onderwerp_to_idx[label]
             onderwerp_encoded[i, idx] = 1.0
 
         # Encode beleving labels (multi-hot)
-        for label in sample['beleving_labels'].split(';'):
+        for label in sample['beleving_labels'].split('; '):
             idx = beleving_to_idx[label]
             beleving_encoded[i, idx] = 1.0
 
