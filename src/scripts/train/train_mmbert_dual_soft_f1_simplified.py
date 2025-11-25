@@ -18,6 +18,7 @@ import numpy as np
 import argparse
 import random
 import wandb
+import bitsandbytes as bnb
 from dataset_loader import load_wim_dataset
 
 
@@ -187,7 +188,7 @@ def calculate_soft_f1(logits, labels, logit_threshold=None, temperature=1.0):
 
 
 def evaluate(model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
-             onderwerp_names, beleving_names, num_samples, max_length):
+             onderwerp_names, beleving_names, num_samples, max_length, amp_dtype=torch.bfloat16):
     """
     Evaluate model on validation set and return metrics.
     Args:
@@ -201,6 +202,7 @@ def evaluate(model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
         beleving_names: List of beleving label names
         num_samples: Number of samples to evaluate (None = all)
         max_length: Max sequence length
+        amp_dtype: Data type for autocasting (default: torch.bfloat16)
     Returns:
         dict: Dictionary containing all evaluation metrics
     """
@@ -241,12 +243,13 @@ def evaluate(model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
             input_ids = encoding['input_ids'].to(device)
             attention_mask = encoding['attention_mask'].to(device)
 
-            # Get predictions
-            onderwerp_logits, beleving_logits = model(input_ids, attention_mask)
+            # Get predictions with Autocast
+            with torch.amp.autocast(device_type=device.type, dtype=amp_dtype):
+                onderwerp_logits, beleving_logits = model(input_ids, attention_mask)
 
             # Convert to probabilities
-            onderwerp_probs = torch.sigmoid(onderwerp_logits)
-            beleving_probs = torch.sigmoid(beleving_logits)
+            onderwerp_probs = torch.sigmoid(onderwerp_logits.float())
+            beleving_probs = torch.sigmoid(beleving_logits.float())
 
             # Apply learned per-class thresholds (if enabled) or fixed 0.5 cutoff
             if model.use_thresholds:
@@ -372,7 +375,8 @@ def make_opt_sched(model, enc_lr, thr_lr, total_steps, warmup_ratio, eta_min):
         thr_params = [model.onderwerp_tau_logit, model.beleving_tau_logit]
         param_groups.append({"params": thr_params, "lr": thr_lr, "weight_decay": 0.0})
 
-    optimizer = torch.optim.AdamW(param_groups)
+    optimizer = bnb.optim.PagedAdamW8bit(param_groups)
+    print("Using bitsandbytes 8-bit AdamW optimizer")
 
     # Warmup → cosine schedule
     warmup_steps = min(max(1, int(warmup_ratio * total_steps)), max(1, total_steps - 1))
@@ -387,7 +391,7 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
                onderwerp_names, beleving_names, device,
                *, start_epoch, end_epoch, phase_name="train",
                optimizer, scheduler, temperature, alpha,
-               max_length, global_step):
+               max_length, global_step, amp_dtype=torch.bfloat16):
     """
     Run training for a range of epochs.
     Args:
@@ -406,6 +410,7 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
         alpha: Loss weighting (F1 vs BCE)
         max_length: Max sequence length
         global_step: Starting global step counter
+        amp_dtype: Data type for autocasting (default: torch.bfloat16)
     Returns:
         Updated global_step
     """
@@ -435,42 +440,43 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
             # Zero gradients
             optimizer.zero_grad()
 
-            # Forward pass
-            onderwerp_logits, beleving_logits = model(input_ids, attention_mask)
+            # Forward pass with Autocast (Handles BF16 weights + FP32 Softmax safety)
+            with torch.amp.autocast(device_type=device.type, dtype=amp_dtype):
+                onderwerp_logits, beleving_logits = model(input_ids, attention_mask)
 
-            # Calculate Soft-F1 for both heads (conditionally pass thresholds)
-            onderwerp_f1 = calculate_soft_f1(
-                onderwerp_logits, onderwerp_labels,
-                model.onderwerp_tau_logit if model.use_thresholds else None,
-                temperature
-            )
-            beleving_f1 = calculate_soft_f1(
-                beleving_logits, beleving_labels,
-                model.beleving_tau_logit if model.use_thresholds else None,
-                temperature
-            )
+                # Calculate Soft-F1 for both heads (conditionally pass thresholds)
+                onderwerp_f1 = calculate_soft_f1(
+                    onderwerp_logits, onderwerp_labels,
+                    model.onderwerp_tau_logit if model.use_thresholds else None,
+                    temperature
+                )
+                beleving_f1 = calculate_soft_f1(
+                    beleving_logits, beleving_labels,
+                    model.beleving_tau_logit if model.use_thresholds else None,
+                    temperature
+                )
 
-            # Calculate BCE loss
-            # Design choice (POLA):
-            # - BCE is computed on raw logits to maintain probability calibration.
-            # - Soft-F1 may use a shifted logit (if thresholds ON) to learn F1-friendly boundaries.
-            # - If thresholds OFF, Soft-F1 acts directly on logits; there is a single "source of truth".
-            # This keeps behavior unsurprising: either (A) calibrated logits + separate boundary learning,
-            # or (B) no extra threshold machinery; F1 and BCE both reference the same logits.
-            bce_onderwerp = F.binary_cross_entropy_with_logits(onderwerp_logits, onderwerp_labels)
-            bce_beleving = F.binary_cross_entropy_with_logits(beleving_logits, beleving_labels)
+                # Calculate BCE loss
+                # Design choice (POLA):
+                # - BCE is computed on raw logits to maintain probability calibration.
+                # - Soft-F1 may use a shifted logit (if thresholds ON) to learn F1-friendly boundaries.
+                # - If thresholds OFF, Soft-F1 acts directly on logits; there is a single "source of truth".
+                # This keeps behavior unsurprising: either (A) calibrated logits + separate boundary learning,
+                # or (B) no extra threshold machinery; F1 and BCE both reference the same logits.
+                bce_onderwerp = F.binary_cross_entropy_with_logits(onderwerp_logits, onderwerp_labels)
+                bce_beleving = F.binary_cross_entropy_with_logits(beleving_logits, beleving_labels)
 
-            # Combined loss
-            f1_loss = (1 - onderwerp_f1) + (1 - beleving_f1)
-            bce_loss = bce_onderwerp + bce_beleving
-            loss = alpha * (f1_loss / 2) + (1 - alpha) * (bce_loss / 2)
+                # Combined loss
+                f1_loss = (1 - onderwerp_f1) + (1 - beleving_f1)
+                bce_loss = bce_onderwerp + bce_beleving
+                loss = alpha * (f1_loss / 2) + (1 - alpha) * (bce_loss / 2)
 
             # Periodic logging
             if batch_idx % 20 == 0:
                 with torch.no_grad():
                     # Get predictions (convert thresholds from logit-space to prob-space if enabled)
-                    onderwerp_probs = torch.sigmoid(onderwerp_logits)
-                    beleving_probs = torch.sigmoid(beleving_logits)
+                    onderwerp_probs = torch.sigmoid(onderwerp_logits.float())
+                    beleving_probs = torch.sigmoid(beleving_logits.float())
                     if model.use_thresholds:
                         tau_on = logit_to_prob(model.onderwerp_tau_logit)
                         tau_be = logit_to_prob(model.beleving_tau_logit)
@@ -605,7 +611,7 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
         print(f"\n  Running validation on 200 samples...")
         val_metrics = evaluate(
             model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
-            onderwerp_names, beleving_names, num_samples=200, max_length=max_length
+            onderwerp_names, beleving_names, num_samples=200, max_length=max_length, amp_dtype=amp_dtype
         )
 
         # Log validation metrics
@@ -760,7 +766,7 @@ def main():
     )
 
     # Move model to device
-    model = model.to(device)
+    model = model.to(device, dtype=torch.bfloat16 if device.type == 'cuda' else torch.float32)
 
     # Ensure thresholds match encoder dtype for mixed precision safety
     encoder_dtype = next(model.encoder.parameters()).dtype
@@ -769,9 +775,12 @@ def main():
             model.onderwerp_tau_logit.copy_(model.onderwerp_tau_logit.to(encoder_dtype))
             model.beleving_tau_logit.copy_(model.beleving_tau_logit.to(encoder_dtype))
 
-    print(f"Model loaded and moved to {device}")
+    print(f"Model loaded and moved to {device} in {encoder_dtype} precision.")
     print(f"  Onderwerp head: {len(onderwerp_names)} outputs")
     print(f"  Beleving head: {len(beleving_names)} outputs")
+
+    amp_dtype = "bfloat16" if device.type == 'cuda' else "float32"
+    print(f"Using Pure BF16 Training (Weights: {encoder_dtype}, Ops: {amp_dtype}")
 
     # Split data into train/val (80/20)
     split_idx = int(0.8 * len(texts))
@@ -857,7 +866,8 @@ def main():
         phase_name="train",
         optimizer=optimizer, scheduler=scheduler,
         temperature=temperature, alpha=alpha,
-        max_length=max_length, global_step=0
+        max_length=max_length, global_step=0,
+        amp_dtype=torch.bfloat16
     )
 
     # Training complete
@@ -873,7 +883,7 @@ def main():
     print(f"\nEvaluating on 500 validation samples...")
     final_metrics = evaluate(
         model, val_texts, val_onderwerp, val_beleving, tokenizer, device,
-        onderwerp_names, beleving_names, num_samples=500, max_length=max_length
+        onderwerp_names, beleving_names, num_samples=500, max_length=max_length, amp_dtype=torch.bfloat16
     )
 
     # Print overall metrics

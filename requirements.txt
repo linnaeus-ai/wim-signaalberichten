@@ -25,3 +25,7 @@ pyyaml
 transformers
 torch
 huggingface-hub
+
+# Optimization
+bitsandbytes
+scipy
