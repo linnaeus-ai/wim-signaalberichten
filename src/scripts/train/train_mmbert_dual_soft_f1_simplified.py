@@ -778,7 +778,7 @@ def main():
     )
 
     # Move model to device
-    model = model.to(device, dtype=torch.float16)
+    model = model.to(device)
 
     # Ensure thresholds match encoder dtype for mixed precision safety
     encoder_dtype = next(model.encoder.parameters()).dtype
@@ -791,8 +791,8 @@ def main():
     print(f"  Onderwerp head: {len(onderwerp_names)} outputs")
     print(f"  Beleving head: {len(beleving_names)} outputs")
 
-    amp_dtype = torch.float16  # Using pure FP16 training
-    print(f"Using Pure FP16 Training (Weights: {encoder_dtype}, Ops: {amp_dtype})")
+    amp_dtype = torch.float16  # Using Mixed Precision (FP32 weights + FP16 Ops)
+    print(f"Using Mixed Precision Training (Weights: {encoder_dtype}, Ops: {amp_dtype})")
     # Split data into train/val (80/20)
     split_idx = int(0.8 * len(texts))
     train_texts = texts[:split_idx]
