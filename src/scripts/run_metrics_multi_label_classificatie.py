@@ -658,10 +658,37 @@ def main(args) -> None:
         print(f"{Colors.GREEN}✓ All gold labels are valid!{Colors.ENDC}")
     
 
-    ## Determine model directory (weights) and definition path (code)
+    # Determine model directory (weights) and definition path (code)
     if args.model_path:
         print(f"🔧 Loading local model from {args.model_path}...")
-        model_dir = args.model_path
+        
+        # Handle if user provided a file path instead of directory
+        if os.path.isfile(args.model_path):
+            model_dir = os.path.dirname(args.model_path)
+            print(f"{Colors.YELLOW}Warning: Provided path is a file. Using directory: {model_dir}{Colors.ENDC}")
+        else:
+            model_dir = args.model_path
+            
+        # Ensure absolute path
+        model_dir = os.path.abspath(model_dir)
+        
+        if not os.path.exists(model_dir):
+             print(f"{Colors.RED}Error: Model directory {model_dir} does not exist.{Colors.ENDC}")
+             sys.exit(1)
+
+        # Check for config.json - essential for AutoModel.from_pretrained
+        if not os.path.exists(os.path.join(model_dir, "config.json")):
+            print(f"{Colors.YELLOW}Note: config.json not found in {model_dir}. Fetching config and tokenizer from HuggingFace...{Colors.ENDC}")
+            try:
+                # Download config and tokenizer files to the local model directory
+                snapshot_download(
+                    MODEL_REPO, 
+                    allow_patterns=["config.json", "tokenizer*", "vocab.txt", "special_tokens_map.json"], 
+                    local_dir=model_dir
+                )
+            except Exception as e:
+                print(f"{Colors.RED}Error fetching config/tokenizer: {e}{Colors.ENDC}")
+                sys.exit(1)
         
         # We need the DualHeadModel class definition (code) to load the weights (data).
         # If model.py is not in the local folder, fetch it from the repo so we can load the local weights.
