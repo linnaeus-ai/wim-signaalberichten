@@ -28,7 +28,7 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
 
     # Load RD dataset
     print(f"Loading dataset from Excel file: {excel_path}")
-    ds = load_dataset('csv', data_files=excel_path, delimiter='; ', split='train')
+    ds = load_dataset('csv', data_files=excel_path, delimiter=';', split='train')
     
     # Keep only essential columns from RD dataset
     ds= ds.select_columns(['text', 'onderwerp_labels', 'beleving_labels'])

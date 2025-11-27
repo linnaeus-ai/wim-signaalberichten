@@ -657,19 +657,43 @@ def main(args) -> None:
     else:
         print(f"{Colors.GREEN}✓ All gold labels are valid!{Colors.ENDC}")
     
-    # Download wimbert model files (uses HF cache)
-    model_dir = snapshot_download(MODEL_REPO, cache_dir=None)
-    print(model_dir)
+
+    ## Determine model directory (weights) and definition path (code)
+    if args.model_path:
+        print(f"🔧 Loading local model from {args.model_path}...")
+        model_dir = args.model_path
+        
+        # We need the DualHeadModel class definition (code) to load the weights (data).
+        # If model.py is not in the local folder, fetch it from the repo so we can load the local weights.
+        if os.path.exists(os.path.join(model_dir, "model.py")):
+            model_def_path = os.path.join(model_dir, "model.py")
+        else:
+            print(f"{Colors.YELLOW}Note: model.py not found locally. Fetching class definition from HuggingFace to load local weights...{Colors.ENDC}")
+            hf_cache = snapshot_download(MODEL_REPO, allow_patterns=["model.py"], cache_dir=None)
+            model_def_path = os.path.join(hf_cache, "model.py")
+    else:
+        print(f"🔧 Loading model from {MODEL_REPO}...")
+        # Download wimbert model files (uses HF cache)
+        model_dir = snapshot_download(MODEL_REPO, cache_dir=None)
+        model_def_path = os.path.join(model_dir, "model.py")
+    
+    print(f"🖥️  Device: {DEVICE} ({DTYPE})")
+    print(f"Model directory: {model_dir}")
 
     # Dynamic import of model.py from downloaded dir
-    spec = importlib.util.spec_from_file_location("model", f"{model_dir}/model.py")
+    spec = importlib.util.spec_from_file_location("model", model_def_path)
     model_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(model_module)
     DualHeadModel = model_module.DualHeadModel
 
-    # Load model + tokenizer + config
-    model, tokenizer, config = DualHeadModel.from_pretrained(model_dir, device=DEVICE)
-
+    # Load model + tokenizer + config from the model_dir (local or remote)
+    try:
+        # This loads the weights (safetensors/bin) from model_dir into the class defined in model_def_path
+        model, tokenizer, config = DualHeadModel.from_pretrained(model_dir, device=DEVICE)
+    except OSError as e:
+        print(f"{Colors.RED}Error loading model: {e}{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Ensure {model_dir} contains model.safetensors (or pytorch_model.bin), config.json, and tokenizer files.{Colors.ENDC}")
+        sys.exit(1)
     # Cast to target dtype
     if DTYPE == torch.float16:
         model = model.half()
@@ -817,6 +841,14 @@ Examples:
         type=int,
         default=None,
         help='Number of rows to process from dataset (default: %(default)s)'
+    )
+
+    # Model options
+    model_group = parser.add_argument_group('model options')
+    model_group.add_argument(
+        '--model-path',
+        type=str,
+        help='Path to local model directory (if not provided, downloads from HuggingFace)'
     )
     
     # Output options
