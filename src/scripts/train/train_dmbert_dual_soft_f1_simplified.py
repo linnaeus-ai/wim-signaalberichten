@@ -714,7 +714,7 @@ def main():
         max_length=1408,
 
         # Training switches
-        use_thresholds=True,  # If False: no learnable thresholds; Soft-F1 uses raw logits
+        use_thresholds=False,  # If False: no learnable thresholds; Soft-F1 uses raw logits
 
         # Training
         encoder_peak_lr=5e-5,
@@ -723,7 +723,7 @@ def main():
         batch_size=8,
 
         # Loss function
-        alpha=0.5,  # Weight for F1 loss in combined loss (0.5 = balanced)
+        alpha=0.35,  # Weight for F1 loss in combined loss (0.5 = balanced)
         temperature=3.0,  # Sigmoid smoothing (lower = softer, higher = sharper)
 
         # LR schedule
