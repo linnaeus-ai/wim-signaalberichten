@@ -662,7 +662,7 @@ def run_epochs(model, tokenizer, train_loader, val_texts, val_onderwerp, val_bel
     return global_step
 
 def create_argument_parser():
-    parser = argparse.ArgumentParser(description="Train mmBERT dual-head model on Wim dataset with wandb sweeps.")
+    parser = argparse.ArgumentParser(description="Train BERT dual-head model on Wim dataset with wandb sweeps.")
     parser.add_argument(
         "--excel_file_path",
         type=str,
@@ -674,6 +674,12 @@ def create_argument_parser():
         type=str,
         required=True,
         help="Wandb API key for authentication."
+    )
+    parser.add_argument(
+        "--product-column",
+        type=str,
+        default="Product/Dienst",
+        help="Name of the product/category column in Excel file (default: 'Product/Dienst'). Set to empty string to disable."
     )
     return parser
 
@@ -740,7 +746,9 @@ def main():
     # Load RD dataset
     print("\nLoading dataset...")
     texts, onderwerp, beleving, onderwerp_names, beleving_names = load_wim_dataset(
-        excel_path=args.excel_file_path, max_samples=None  # Using full dataset for better training
+        excel_path=args.excel_file_path, 
+        max_samples=None,  # Using full dataset for better training
+        category_column=args.product_column if args.product_column else None
     )
 
     print(f"\nDataset loaded:")

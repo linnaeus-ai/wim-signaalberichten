@@ -7,7 +7,7 @@ import numpy as np
 from datasets import load_dataset
 
 
-def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
+def load_wim_dataset(excel_path, test_size=0.2, max_samples=None, category_column='Product/Dienst'):
     """
     Load dataset and encode multi-labels.
     
@@ -18,6 +18,7 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
         excel_path: Path to the Excel file containing the dataset
         test_size: Fraction of data to reserve for testing (default: 0.2)
         max_samples: Limit number of samples (None = all samples)
+        category_column: Name of the category/product column (default: 'Product/Dienst')
     Returns:
         texts: List of conversation strings
         onderwerp_encoded: numpy array [n_samples, n_onderwerp] - multi-hot encoded topics
@@ -30,9 +31,15 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
     print(f"Loading dataset from Excel file: {excel_path}")
     ds = load_dataset('csv', data_files=excel_path, delimiter=';', split='train')
     
-    # Keep only essential columns from RD dataset
-    ds= ds.select_columns(['text', 'onderwerp_labels', 'beleving_labels'])
-    print(f"Loaded: {len(ds)} samples from Excel")
+    # Keep only essential columns from RD dataset (including category/product)
+    # Check if category column exists, fall back to empty string if not
+    if category_column and category_column in ds.column_names:
+        ds = ds.select_columns(['text', 'onderwerp_labels', 'beleving_labels', category_column])
+        has_category = True
+    else:
+        ds = ds.select_columns(['text', 'onderwerp_labels', 'beleving_labels'])
+        has_category = False
+    print(f"Loaded: {len(ds)} samples from Excel (category column '{category_column}': {has_category})")
     
     # Shuffle with fixed seed for reproducibility
     ds = ds.shuffle(seed=42)
@@ -93,7 +100,12 @@ def load_wim_dataset(excel_path, test_size=0.2, max_samples=None):
 
     # Fill arrays
     for i, sample in enumerate(ds):
-        texts.append(sample['text'])
+        # Prepend category to text if available (matching inference behavior)
+        text = sample['text']
+        if has_category and category_column in sample and sample[category_column]:
+            category = sample[category_column]
+            text = f"Product of dienst van toepassing:\n\n{category}\n\nTekst:\n\n{text}"
+        texts.append(text)
 
         # Encode onderwerp labels (multi-hot)
         for label in sample['onderwerp_labels'].split('; '):
