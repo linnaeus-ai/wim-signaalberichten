@@ -274,7 +274,7 @@ def compute_confusion_matrices(true_matrix: np.ndarray,
     """
     conf_matrices = {}
     for i, lbl in enumerate(all_labels):
-        cm = confusion_matrix(true_matrix[:, i], pred_matrix[:, i])
+        cm = confusion_matrix(true_matrix[:, i], pred_matrix[:, i], labels=[0,1])
         conf_matrices[lbl] = cm
     return conf_matrices
 
